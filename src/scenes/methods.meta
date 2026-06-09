@@ -1,0 +1,34 @@
+{
+  "version": 0,
+  "timeEvents": [
+    {
+      "name": "scene4",
+      "targetTime": 2.5
+    },
+    {
+      "name": "scene5",
+      "targetTime": 11.5
+    },
+    {
+      "name": "scene6",
+      "targetTime": 21
+    },
+    {
+      "name": "scene7",
+      "targetTime": 31
+    },
+    {
+      "name": "scene8",
+      "targetTime": 35
+    },
+    {
+      "name": "scene9",
+      "targetTime": 38.5
+    },
+    {
+      "name": "end",
+      "targetTime": 42
+    }
+  ],
+  "seed": 12345
+}

@@ -5,6 +5,7 @@ import {
   Txt,
   Layout,
   Spline,
+  Line,
 } from '@motion-canvas/2d';
 import {
   createRef,
@@ -20,6 +21,8 @@ import {
 // Interfaces for our state and points
 interface PatientPoint {
   pos: Vector2;
+  pos3D: { x: number; y: number; z: number };
+  progress: any;
   isTarget: boolean;
   isIdeal: boolean;
   ref: any;
@@ -30,40 +33,35 @@ export default makeScene2D(function* (view) {
   view.fill('#05070f');
 
   // --- SIGNALS FOR TEXT, POSITION, & VISIBILITY TRANSITIONS ---
-  const cameraX = createSignal(350); // Camera centers: Zone 1 (350), Zone 2 (1500), Zone 3 (2900), Zone 4 (4300)
-  const ingestionOpacity = createSignal(0); // Stage 1 ingestion graphics
-  const terminalOpacity = createSignal(0); // Stage 2 physician terminal graphics
+  const cameraX = createSignal(2900); // Start at Patient Space (Zone 3: 2900) and move to Erdos Loop (Zone 4: 4300)
   const umapOpacity = createSignal(0); // Stages 3-7 scatter plots and models
   const stage8Opacity = createSignal(0); // Stage 9 final active learning graphics
-
   const erdosOpacity = createSignal(0); // Erdos Model Opacity (Materializes in Scene 8)
   const erdosPosition = createSignal(new Vector2(2960, 20)); // Erdos Model Position (Zone 3 Center, floats to Zone 4)
-
   const headerOpacity = createSignal(0); // Top-center floating pop-up header
   const headerTitle = createSignal('');
   const headerSub = createSignal('');
+  const taglineOpacity = createSignal(0); // Bottom center tagline
 
   // Opacity & visual state signals for UMAP stages
   const narrowBoxOpacity = createSignal(0);
   const wideBoxOpacity = createSignal(0);
   const moldOpacity = createSignal(0);
   const idealRegionOpacity = createSignal(0);
-  const taglineOpacity = createSignal(0);
 
   // Stage 9 Specific Signals
   const tableOpacity = createSignal(0);
   const erdosGlowOpacity = createSignal(0);
   const learningAlertOpacity = createSignal(0);
 
-  // References for Ingestion & Terminal stages
-  const warehouseRef = createRef<Layout>();
-  const queryPulseRef = createRef<Circle>();
-  const packet1 = createRef<Circle>();
-  const packet2 = createRef<Circle>();
-  const packet3 = createRef<Circle>();
-  const packet4 = createRef<Circle>();
-  const packet5 = createRef<Circle>();
-  const packet6 = createRef<Circle>();
+  // --- 3D SPACE ROTATION & INFLUENCE SIGNALS ---
+  const spaceRotation = createSignal(0);
+  const space3DInfluence = createSignal(0);
+  const collapseProgress = createSignal(0);
+
+  // --- DYNAMIC 3D DISMORPHED DONUT MANIFOLD SIGNALS ---
+  const currentDonutScale = createSignal(0); // starts flat, grows/inflates in Scene 6
+  const currentDonutRadiusScale = createSignal(1.0);
 
   // References for UMAP stages
   const narrowBoxRefA = createRef<Rect>();
@@ -80,6 +78,7 @@ export default makeScene2D(function* (view) {
   const stage8Packet2 = createRef<Circle>();
   const stage8Packet3 = createRef<Circle>();
   const discrepancyPacketRef = createRef<Circle>();
+  const queryPulseRef = createRef<Circle>();
 
   const matchedRefs = Array.from({ length: 7 }, () => createRef<Circle>());
 
@@ -93,7 +92,6 @@ export default makeScene2D(function* (view) {
 
   const points: PatientPoint[] = [];
   const numPoints = 150; // Dense and elegant points count
-
   const center = new Vector2(2960, 20);   // Unified Center of EHR Patient Space in Zone 3
   const warehouseZone3 = new Vector2(2250, 260); // Bottom-left database coordinate in Zone 3
 
@@ -114,8 +112,15 @@ export default makeScene2D(function* (view) {
     // Ideal region is a sub-cluster inside the target shape
     const isIdeal = isTarget && relX > 70 && relY < 40 && relY > -40;
 
+    // Generate 3D coordinates around center
+    const x3D = relX;
+    const y3D = relY;
+    const z3D = (rand() - 0.5) * 300; // random depth for 3D layout
+
     points.push({
       pos: new Vector2(x, y),
+      pos3D: { x: x3D, y: y3D, z: z3D },
+      progress: createSignal(0),
       isTarget,
       isIdeal,
       ref: createRef<Circle>(),
@@ -142,6 +147,61 @@ export default makeScene2D(function* (view) {
 
   // Create signals for spline points morphing
   const currentMoldPointsA = moldPointsA.map(p => createSignal(p));
+
+  // Helper to project 3D coordinates into 2D with rotation and perspective
+  function project3D(x3D: number, y3D: number, z3D: number) {
+    const cosA = Math.cos(spaceRotation());
+    const sinA = Math.sin(spaceRotation());
+    const rotX = x3D * cosA - z3D * sinA;
+    const rotY = y3D;
+    const rotZ = x3D * sinA + z3D * cosA;
+
+    const distance = 800;
+    const scale3d = distance / (distance + rotZ);
+    return new Vector2(
+      center.x + rotX * scale3d,
+      center.y + rotY * scale3d
+    );
+  }
+
+  // Generates 3D coordinates for a continuous hollow dismorphed donut (torus)
+  // that is thick on the right side (where green target patients are) and thin on the left.
+  function getDonutPoints() {
+    const outerPoints: Vector2[] = [];
+    const innerPoints: Vector2[] = [];
+    const numSteps = 32;
+
+    for (let i = 0; i < numSteps; i++) {
+      const theta = (i / numSteps) * Math.PI * 2;
+      
+      // R is the centerline radius scaled by radius signal
+      const R = (150 + 40 * Math.cos(theta)) * currentDonutRadiusScale();
+      // r is the tube thickness, which bulges on the right and thins on the left, scaled by donut signal
+      const r = (45 + 30 * Math.cos(theta)) * currentDonutScale();
+
+      // Outer boundary point relative to center
+      const xOut = (R + r) * Math.cos(theta);
+      const yOut = (R + r) * Math.sin(theta);
+      outerPoints.push(new Vector2(xOut, yOut));
+
+      // Inner boundary point relative to center (defines the hole)
+      const xIn = (R - r) * Math.cos(theta);
+      const yIn = (R - r) * Math.sin(theta);
+      innerPoints.push(new Vector2(xIn, yIn));
+    }
+
+    // Combine outer points (clockwise order) and inner points (counter-clockwise order)
+    // to form a single continuous hollow path using non-zero winding rules for filled rendering
+    const combined: Vector2[] = [];
+    for (let i = 0; i < numSteps; i++) {
+      combined.push(outerPoints[i]);
+    }
+    for (let i = numSteps - 1; i >= 0; i--) {
+      combined.push(innerPoints[i]);
+    }
+
+    return combined;
+  }
 
   // Helper function to animate single packet streams
   function* animatePacket(packet: any, start: Vector2, mid: Vector2, end: Vector2, delayTime: number) {
@@ -213,339 +273,12 @@ export default makeScene2D(function* (view) {
         opacity={taglineOpacity}
       />
 
-      {/* ========================================================= */}
       {/* SLIDING WORLD CONTAINER (Slides camera right by moving left) */}
-      {/* ========================================================= */}
       <Layout position={() => new Vector2(-cameraX(), 0)}>
         
-        {/* ========================================================= */}
-        {/* ZONE 1 (x: 0 to 800): REAL-WORLD DATA INGESTION PIPELINE */}
-        {/* ========================================================= */}
-        <Layout opacity={ingestionOpacity}>
-          {/* CONNECTION WEB (THE NETWORK / COHORT TRANSFERS) */}
-          <Spline
-            points={[new Vector2(100, -220), new Vector2(240, -110), new Vector2(380, 0)]}
-            stroke={'rgba(59, 130, 246, 0.15)'}
-            lineWidth={2}
-          />
-          <Spline
-            points={[new Vector2(100, 0), new Vector2(380, 0)]}
-            stroke={'rgba(59, 130, 246, 0.15)'}
-            lineWidth={2}
-          />
-          <Spline
-            points={[new Vector2(100, 220), new Vector2(240, 110), new Vector2(380, 0)]}
-            stroke={'rgba(59, 130, 246, 0.15)'}
-            lineWidth={2}
-          />
-          <Spline
-            points={[new Vector2(380, 0), new Vector2(650, 0)]}
-            stroke={'rgba(59, 130, 246, 0.3)'}
-            lineWidth={3.5}
-            lineDash={[6, 4]}
-          />
-
-          {/* SOURCE 1: METRO CLINICAL HOSPITAL */}
-          <Rect
-            x={100}
-            y={-220}
-            width={240}
-            height={110}
-            fill={'rgba(15, 23, 42, 0.75)'}
-            stroke={'rgba(99, 102, 241, 0.3)'}
-            lineWidth={1.5}
-            radius={12}
-          >
-            <Layout x={-75}>
-              {/* Medical Cross Icon */}
-              <Rect width={8} height={24} fill={'#ff6b6b'} radius={2} />
-              <Rect width={24} height={8} fill={'#ff6b6b'} radius={2} />
-            </Layout>
-            <Txt
-              x={35}
-              y={-10}
-              fontFamily={'Manrope'}
-              fontSize={13}
-              fontWeight={800}
-              fill={'#ffffff'}
-              text={'METRO HOSPITAL'}
-            />
-            <Txt
-              x={35}
-              y={15}
-              fontFamily={'IBM Plex Sans'}
-              fontSize={11}
-              fontWeight={500}
-              fill={'#64748b'}
-              text={'Continuous EHR feed'}
-            />
-          </Rect>
-
-          {/* SOURCE 2: REGIONAL HEALTH CLINIC */}
-          <Rect
-            x={100}
-            y={0}
-            width={240}
-            height={110}
-            fill={'rgba(15, 23, 42, 0.75)'}
-            stroke={'rgba(99, 102, 241, 0.3)'}
-            lineWidth={1.5}
-            radius={12}
-          >
-            <Layout x={-75}>
-              {/* Pulse wave line symbol */}
-              <Spline
-                points={[new Vector2(-15, 0), new Vector2(-5, 0), new Vector2(0, -15), new Vector2(5, 15), new Vector2(10, 0), new Vector2(20, 0)]}
-                stroke={'#38bdf8'}
-                lineWidth={3}
-              />
-            </Layout>
-            <Txt
-              x={35}
-              y={-10}
-              fontFamily={'Manrope'}
-              fontSize={13}
-              fontWeight={800}
-              fill={'#ffffff'}
-              text={'REGIONAL CLINIC'}
-            />
-            <Txt
-              x={35}
-              y={15}
-              fontFamily={'IBM Plex Sans'}
-              fontSize={11}
-              fontWeight={500}
-              fill={'#64748b'}
-              text={'Daily cohort sync'}
-            />
-          </Rect>
-
-          {/* SOURCE 3: PRIVATE PHYSICIAN PRACTICE */}
-          <Rect
-            x={100}
-            y={220}
-            width={240}
-            height={110}
-            fill={'rgba(15, 23, 42, 0.75)'}
-            stroke={'rgba(99, 102, 241, 0.3)'}
-            lineWidth={1.5}
-            radius={12}
-          >
-            <Layout x={-75}>
-              {/* User badge shield icon */}
-              <Circle size={18} stroke={'#10b981'} lineWidth={2.5} />
-              <Circle y={8} size={8} fill={'#10b981'} />
-            </Layout>
-            <Txt
-              x={35}
-              y={-10}
-              fontFamily={'Manrope'}
-              fontSize={13}
-              fontWeight={800}
-              fill={'#ffffff'}
-              text={'PRIVATE PRACTICE'}
-            />
-            <Txt
-              x={35}
-              y={15}
-              fontFamily={'IBM Plex Sans'}
-              fontSize={11}
-              fontWeight={500}
-              fill={'#64748b'}
-              text={'Encrypted batched logs'}
-            />
-          </Rect>
-
-          {/* WEB FUNNEL HUB */}
-          <Circle
-            x={380}
-            y={0}
-            size={56}
-            fill={'rgba(30, 41, 59, 0.95)'}
-            stroke={'#3b82f6'}
-            lineWidth={1.5}
-            shadowBlur={10}
-            shadowColor={'#3b82f6'}
-          >
-            <Circle size={28} fill={'rgba(59, 130, 246, 0.2)'} />
-            <Circle size={10} fill={'#00d2ff'} />
-          </Circle>
-
-          {/* STAGGERED STREAMING DATA PACKETS */}
-          <Circle ref={packet1} size={14} fill={'#00f2fe'} opacity={0} shadowBlur={12} shadowColor={'#00f2fe'} />
-          <Circle ref={packet2} size={14} fill={'#10b981'} opacity={0} shadowBlur={12} shadowColor={'#10b981'} />
-          <Circle ref={packet3} size={14} fill={'#6366f1'} opacity={0} shadowBlur={12} shadowColor={'#6366f1'} />
-          <Circle ref={packet4} size={14} fill={'#00f2fe'} opacity={0} shadowBlur={12} shadowColor={'#00f2fe'} />
-          <Circle ref={packet5} size={14} fill={'#10b981'} opacity={0} shadowBlur={12} shadowColor={'#10b981'} />
-          <Circle ref={packet6} size={14} fill={'#6366f1'} opacity={0} shadowBlur={12} shadowColor={'#6366f1'} />
-
-          {/* CENTRAL DATA WAREHOUSE CYLINDER STACK */}
-          <Layout ref={warehouseRef} x={650} y={0}>
-            <Rect
-              y={-50}
-              width={180}
-              height={36}
-              fill={'rgba(15, 23, 42, 0.95)'}
-              stroke={'#3b82f6'}
-              lineWidth={1.5}
-              radius={8}
-              shadowBlur={15}
-              shadowColor={'rgba(59, 130, 246, 0.15)'}
-            >
-              <Circle x={60} size={6} fill={'#34d399'} shadowBlur={6} shadowColor={'#34d399'} />
-            </Rect>
-            <Rect
-              y={0}
-              width={180}
-              height={36}
-              fill={'rgba(15, 23, 42, 0.95)'}
-              stroke={'#3b82f6'}
-              lineWidth={1.5}
-              radius={8}
-              shadowBlur={15}
-              shadowColor={'rgba(59, 130, 246, 0.15)'}
-            >
-              <Circle x={60} size={6} fill={'#34d399'} shadowBlur={6} shadowColor={'#34d399'} />
-            </Rect>
-            <Rect
-              y={50}
-              width={180}
-              height={36}
-              fill={'rgba(15, 23, 42, 0.95)'}
-              stroke={'#3b82f6'}
-              lineWidth={1.5}
-              radius={8}
-              shadowBlur={15}
-              shadowColor={'rgba(59, 130, 246, 0.15)'}
-            >
-              <Circle x={60} size={6} fill={'#34d399'} shadowBlur={6} shadowColor={'#34d399'} />
-            </Rect>
-            <Txt
-              y={105}
-              fontFamily={'Manrope'}
-              fontSize={12}
-              fontWeight={700}
-              letterSpacing={1.2}
-              fill={'#64748b'}
-              text={'DATA WAREHOUSE'}
-            />
-          </Layout>
-        </Layout>
-
-        {/* ========================================================= */}
-        {/* ZONE 2 (x: 1200 to 1800): RESEARCHER & QUERY TERMINAL */}
-        {/* ========================================================= */}
-        <Layout opacity={terminalOpacity}>
-          {/* Connection Line from Central Warehouse (650) to Terminal Zone */}
-          <Spline
-            points={[new Vector2(650, 0), new Vector2(1075, -50), new Vector2(1500, -100)]}
-            stroke={'rgba(59, 130, 246, 0.15)'}
-            lineWidth={2.5}
-            lineDash={[6, 6]}
-          />
-          {/* Connection Line from SQL Terminal to Screen */}
-          <Spline
-            points={[new Vector2(1500, 120), new Vector2(1500, -100)]}
-            stroke={'rgba(0, 242, 254, 0.25)'}
-            lineWidth={2}
-          />
-          {/* Query Pulse Line to Warehouse */}
-          <Spline
-            points={[new Vector2(1500, 120), new Vector2(650, 0)]}
-            stroke={'rgba(0, 242, 254, 0.15)'}
-            lineWidth={2}
-            lineDash={[5, 5]}
-          />
-          <Circle
-            ref={queryPulseRef}
-            size={24}
-            fill={'#00f2fe'}
-            opacity={0}
-            shadowBlur={18}
-            shadowColor={'#00f2fe'}
-          />
-
-          {/* PHYSICIAN / RESEARCHER GRAPHIC */}
-          <Layout x={1320} y={-60}>
-            <Circle size={100} fill={'rgba(30, 41, 59, 0.8)'} stroke={'#00f2fe'} lineWidth={2} shadowBlur={15} shadowColor={'#00f2fe'} />
-            {/* Icon Silhouette */}
-            <Circle y={-15} size={30} fill={'#e2e8f0'} />
-            <Circle y={32} size={60} fill={'#e2e8f0'} clip>
-              <Rect y={30} width={60} height={40} fill={'rgba(10, 14, 28, 0.95)'} />
-            </Circle>
-            <Txt y={75} fontFamily={'Manrope'} fontSize={12} fontWeight={700} fill={'#64748b'} text={'CLINICAL RESEARCHER'} />
-          </Layout>
-
-          {/* RESEARCHER INTERACTIVE SCREEN */}
-          <Rect
-            x={1500}
-            y={-100}
-            width={200}
-            height={110}
-            fill={'rgba(15, 23, 42, 0.75)'}
-            stroke={'rgba(255, 255, 255, 0.1)'}
-            lineWidth={1}
-            radius={8}
-            shadowBlur={15}
-            shadowColor={'rgba(56, 189, 248, 0.1)'}
-          >
-            {/* Screen contents: Waveforms or grids */}
-            <Spline
-              points={[new Vector2(-80, 10), new Vector2(-40, -20), new Vector2(0, 30), new Vector2(40, -40), new Vector2(80, 20)]}
-              stroke={'#38bdf8'}
-              lineWidth={2}
-            />
-            <Txt y={40} fontFamily={'IBM Plex Sans'} fontSize={10} fill={'#64748b'} text={'FEASIBILITY DASHBOARD'} />
-          </Rect>
-
-          {/* CLINICAL RESEARCH TERMINAL CONSOLE */}
-          <Rect
-            x={1500}
-            y={120}
-            width={340}
-            height={170}
-            fill={'rgba(10, 15, 30, 0.96)'}
-            stroke={'#00f2fe'}
-            lineWidth={1.5}
-            radius={8}
-            shadowBlur={30}
-            shadowColor={'rgba(0, 242, 254, 0.15)'}
-            clip
-          >
-            {/* Console Top Bar */}
-            <Rect
-              y={-70}
-              width={340}
-              height={30}
-              fill={'#1e293b'}
-              radius={[8, 8, 0, 0]}
-            >
-              <Circle x={-150} size={8} fill={'#ef4444'} />
-              <Circle x={-134} size={8} fill={'#f59e0b'} />
-              <Circle x={-118} size={8} fill={'#10b981'} />
-              <Txt
-                x={30}
-                fontFamily={'IBM Plex Sans'}
-                fontSize={11}
-                fontWeight={600}
-                fill={'#64748b'}
-                text={'graves_cohort_match.sh'}
-              />
-            </Rect>
-
-            {/* Code Execution Rows */}
-            <Txt x={-150} y={-30} fontFamily={'IBM Plex Sans'} fontSize={11} fill={'#00f2fe'} text={'> SELECT * FROM database.ehr_records'} offsetX={-1} />
-            <Txt x={-150} y={-5} fontFamily={'IBM Plex Sans'} fontSize={11} fill={'#00f2fe'} text={'> WHERE labels MATCH "thyroid_orbitopathy"'} offsetX={-1} />
-            <Txt x={-150} y={20} fontFamily={'IBM Plex Sans'} fontSize={11} fill={'#818cf8'} text={'[SEARCHING PATIENTS LEDGER...]'} offsetX={-1} />
-            <Txt x={-150} y={45} fontFamily={'IBM Plex Sans'} fontSize={11} fill={'#10b981'} text={'✔ Subsets Loaded: cohort_ehr_A, cohort_ehr_B'} offsetX={-1} />
-          </Rect>
-        </Layout>
-
-        {/* ========================================================= */}
         {/* ZONE 3 (x: 2400 to 3400): HIGH-DIMENSIONAL PATIENT SPACE */}
-        {/* ========================================================= */}
         <Layout opacity={umapOpacity}>
-          {/* COHORT LABEL BADGE (Placed nicely above scatter plot, 42px buffer below pop-up header) */}
+          {/* COHORT LABEL BADGE */}
           <Rect
             x={center.x}
             y={-290}
@@ -572,7 +305,7 @@ export default makeScene2D(function* (view) {
               fontSize={13}
               fontWeight={700}
               letterSpacing={1}
-              fill={'#ffffff'}
+              fill={'#10b981'}
               text={'EHR PATIENT COHORT'}
             />
           </Rect>
@@ -629,95 +362,240 @@ export default makeScene2D(function* (view) {
             />
           </Layout>
 
-          {/* NARROW FILTER BOX & STRICT I/E CRITERIA LABS */}
-          <Rect
-            ref={narrowBoxRefA}
-            x={center.x + 110}
-            y={center.y - 10}
-            width={160}
-            height={130}
-            stroke={'#ef4444'}
-            lineWidth={3}
-            fill={'rgba(239, 68, 68, 0.05)'}
-            radius={8}
-            opacity={narrowBoxOpacity}
-            layout={false}
-          />
+          {/* NARROW FILTER BOX - 3D SHADED CUBE & STRICT I/E CRITERIA LABS */}
+          <Layout opacity={narrowBoxOpacity}>
+            {/* Back face */}
+            <Line
+              points={() => [
+                project3D(110 - 80, -30 - 65, -80),
+                project3D(110 + 80, -30 - 65, -80),
+                project3D(110 + 80, -30 + 65, -80),
+                project3D(110 - 80, -30 + 65, -80),
+              ]}
+              closed
+              fill={'rgba(148, 163, 184, 0.04)'}
+              stroke={'rgba(148, 163, 184, 0.35)'}
+              lineWidth={1.5}
+            />
+            {/* Front face */}
+            <Line
+              points={() => [
+                project3D(110 - 80, -30 - 65, 80),
+                project3D(110 + 80, -30 - 65, 80),
+                project3D(110 + 80, -30 + 65, 80),
+                project3D(110 - 80, -30 + 65, 80),
+              ]}
+              closed
+              fill={'rgba(148, 163, 184, 0.12)'}
+              stroke={'rgba(148, 163, 184, 0.65)'}
+              lineWidth={2}
+            />
+            {/* Side Connectors */}
+            <Line
+              points={() => [
+                project3D(110 - 80, -30 - 65, -80),
+                project3D(110 - 80, -30 - 65, 80),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.35)'}
+              lineWidth={1.5}
+            />
+            <Line
+              points={() => [
+                project3D(110 + 80, -30 - 65, -80),
+                project3D(110 + 80, -30 - 65, 80),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.35)'}
+              lineWidth={1.5}
+            />
+            <Line
+              points={() => [
+                project3D(110 + 80, -30 + 65, -80),
+                project3D(110 + 80, -30 + 65, 80),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.35)'}
+              lineWidth={1.5}
+            />
+            <Line
+              points={() => [
+                project3D(110 - 80, -30 + 65, -80),
+                project3D(110 - 80, -30 + 65, 80),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.35)'}
+              lineWidth={1.5}
+            />
+          </Layout>
           <Txt
             x={center.x + 110}
-            y={center.y - 90}
+            y={center.y - 105}
             fontFamily={'IBM Plex Sans'}
             fontSize={12}
             fontWeight={700}
-            fill={'#ef4444'}
+            fill={'#94a3b8'}
             opacity={narrowBoxOpacity}
             text={'[INCLUSION] Age: 18-65'}
           />
           <Txt
             x={center.x + 110}
-            y={center.y + 75}
+            y={center.y + 90}
             fontFamily={'IBM Plex Sans'}
             fontSize={12}
             fontWeight={700}
-            fill={'#ef4444'}
+            fill={'#94a3b8'}
             opacity={narrowBoxOpacity}
             text={'[EXCLUSION] TSH > 0.1 mIU/L'}
           />
 
-          {/* WIDE FILTER BOX & LOOSE CRITERIA LABS */}
-          <Rect
-            ref={wideBoxRefA}
-            x={center.x}
-            y={center.y}
-            width={520}
-            height={520}
-            stroke={'#ef4444'}
-            lineWidth={3}
-            fill={'rgba(239, 68, 68, 0.04)'}
-            radius={12}
-            opacity={wideBoxOpacity}
-            layout={false}
-          />
+          {/* WIDE FILTER BOX - 3D SHADED CUBE & LOOSE CRITERIA LABS */}
+          <Layout opacity={wideBoxOpacity}>
+            {/* Back face */}
+            <Line
+              points={() => [
+                project3D(-260, -260, -260),
+                project3D(260, -260, -260),
+                project3D(260, 260, -260),
+                project3D(-260, 260, -260),
+              ]}
+              closed
+              fill={'rgba(148, 163, 184, 0.03)'}
+              stroke={'rgba(148, 163, 184, 0.25)'}
+              lineWidth={1.5}
+            />
+            {/* Front face */}
+            <Line
+              points={() => [
+                project3D(-260, -260, 260),
+                project3D(260, -260, 260),
+                project3D(260, 260, 260),
+                project3D(-260, 260, 260),
+              ]}
+              closed
+              fill={'rgba(148, 163, 184, 0.08)'}
+              stroke={'rgba(148, 163, 184, 0.45)'}
+              lineWidth={2}
+            />
+            {/* Side Connectors */}
+            <Line
+              points={() => [
+                project3D(-260, -260, -260),
+                project3D(-260, -260, 260),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.25)'}
+              lineWidth={1.5}
+            />
+            <Line
+              points={() => [
+                project3D(260, -260, -260),
+                project3D(260, -260, 260),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.25)'}
+              lineWidth={1.5}
+            />
+            <Line
+              points={() => [
+                project3D(260, 260, -260),
+                project3D(260, 260, 260),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.25)'}
+              lineWidth={1.5}
+            />
+            <Line
+              points={() => [
+                project3D(-260, 260, -260),
+                project3D(-260, 260, 260),
+              ]}
+              stroke={'rgba(148, 163, 184, 0.25)'}
+              lineWidth={1.5}
+            />
+          </Layout>
           <Txt
             x={center.x}
-            y={center.y - 255}
+            y={center.y - 275}
             fontFamily={'IBM Plex Sans'}
             fontSize={13}
             fontWeight={700}
-            fill={'#ef4444'}
+            fill={'#94a3b8'}
             opacity={wideBoxOpacity}
             text={'[LOOSE INCLUSION] Age: 18-99'}
           />
           <Txt
             x={center.x}
-            y={center.y + 295}
+            y={center.y + 315}
             fontFamily={'IBM Plex Sans'}
             fontSize={13}
             fontWeight={700}
-            fill={'#ef4444'}
+            fill={'#94a3b8'}
             opacity={wideBoxOpacity}
             text={'[LOOSE EXCLUSION] TSH > 10.0 mIU/L'}
           />
 
-          {/* PULSAR CONFORMING MOLD A */}
-          <Spline
-            ref={moldRefA}
-            points={() => currentMoldPointsA.map(p => p())}
-            closed
-            stroke={'#3b82f6'}
-            lineWidth={4}
-            fill={'rgba(59, 130, 246, 0.06)'}
-            opacity={moldOpacity}
-            layout={false}
-            shadowBlur={15}
-            shadowColor={'rgba(59, 130, 246, 0.3)'}
-          />
+          {/* PULSAR CONFORMING MOLD A (3D DISMORPHED VOLUMETRIC WIREFRAME SPHERE) */}
+          <Layout opacity={moldOpacity}>
+            {/* Latitude Parallels */}
+            {[-1.2, -0.6, 0, 0.6, 1.2].map((phi, lIdx) => (
+              <Spline
+                key={`lat-${lIdx}`}
+                points={() => {
+                  const ringPoints: Vector2[] = [];
+                  const numSteps = 24;
+                  for (let i = 0; i <= numSteps; i++) {
+                    const theta = (i / numSteps) * Math.PI * 2;
+                    // R is the centerline radius
+                    const R = (150 + 50 * Math.cos(theta)) * currentDonutRadiusScale();
+                    const rad = R * Math.cos(phi) * currentDonutScale();
+                    const x = rad * Math.cos(theta);
+                    const y = R * Math.sin(phi) * currentDonutScale();
+                    const z = rad * Math.sin(theta);
+                    ringPoints.push(project3D(x, y, z));
+                  }
+                  return ringPoints;
+                }}
+                stroke={'rgba(59, 130, 246, 0.35)'}
+                lineWidth={1.5}
+                layout={false}
+              />
+            ))}
+
+            {/* Longitude Meridians */}
+            {[0, Math.PI/3, 2*Math.PI/3, Math.PI, 4*Math.PI/3, 5*Math.PI/3].map((theta, mIdx) => (
+              <Spline
+                key={`mer-${mIdx}`}
+                ref={mIdx === 0 ? moldRefA : undefined} // Keep moldRefA associated to the primary meridian for animations
+                points={() => {
+                  const merPoints: Vector2[] = [];
+                  const numSteps = 16;
+                  for (let i = 0; i <= numSteps; i++) {
+                    const phi = -Math.PI/2 + (i / numSteps) * Math.PI;
+                    // R is the centerline radius
+                    const R = (150 + 50 * Math.cos(theta)) * currentDonutRadiusScale();
+                    const rad = R * Math.cos(phi) * currentDonutScale();
+                    const x = rad * Math.cos(theta);
+                    const y = R * Math.sin(phi) * currentDonutScale();
+                    const z = rad * Math.sin(theta);
+                    merPoints.push(project3D(x, y, z));
+                  }
+                  return merPoints;
+                }}
+                stroke={'rgba(0, 242, 254, 0.5)'}
+                lineWidth={1.8}
+                layout={false}
+                shadowBlur={10}
+                shadowColor={'rgba(0, 242, 254, 0.3)'}
+              />
+            ))}
+          </Layout>
 
           {/* IDEAL RECOMMENDATION TARGET REGION */}
           <Circle
             ref={idealRingRefA}
-            position={center.add(new Vector2(130, 0))}
-            size={160}
+            position={() => project3D(130, 0, 0)}
+            size={() => {
+              const cosA = Math.cos(spaceRotation());
+              const sinA = Math.sin(spaceRotation());
+              const rotZ = 130 * sinA;
+              const distance = 800;
+              const scale3d = distance / (distance + rotZ);
+              return 160 * scale3d;
+            }}
             stroke={'#38bdf8'}
             lineWidth={3}
             lineDash={[6, 6]}
@@ -725,8 +603,15 @@ export default makeScene2D(function* (view) {
             layout={false}
           />
           <Circle
-            position={center.add(new Vector2(130, 0))}
-            size={35}
+            position={() => project3D(130, 0, 0)}
+            size={() => {
+              const cosA = Math.cos(spaceRotation());
+              const sinA = Math.sin(spaceRotation());
+              const rotZ = 130 * sinA;
+              const distance = 800;
+              const scale3d = distance / (distance + rotZ);
+              return 35 * scale3d;
+            }}
             fill={'#38bdf8'}
             opacity={idealRegionOpacity}
             layout={false}
@@ -735,29 +620,28 @@ export default makeScene2D(function* (view) {
           />
         </Layout>
 
-        {/* ==================================================================== */}
         {/* ERDOS AI MODEL TRANSLATION SYSTEM (Declared globally in sliding World) */}
-        {/* ==================================================================== */}
         <Layout ref={erdosRef} position={erdosPosition} opacity={erdosOpacity} scale={0}>
           {/* Neural Net Brain Inner Core */}
           <Circle size={80} fill={'rgba(234, 179, 8, 0.15)'} stroke={'#eab308'} lineWidth={2} shadowBlur={25} shadowColor={'#eab308'} />
           <Circle size={45} fill={'#eab308'} shadowBlur={15} shadowColor={'#eab308'} />
+
           {/* Concentric rotating math orbits */}
           <Circle size={110} stroke={'rgba(234, 179, 8, 0.4)'} lineWidth={1} lineDash={[4, 4]} />
           <Circle size={110} opacity={erdosGlowOpacity} fill={'rgba(234, 179, 8, 0.25)'} shadowBlur={40} shadowColor={'#eab308'} />
-          
+
           {/* Neural Net Orbiting Nodes */}
           <Circle x={-60} y={-40} size={14} fill={'#eab308'} shadowBlur={8} shadowColor={'#eab308'} />
           <Circle x={60} y={-30} size={14} fill={'#eab308'} shadowBlur={8} shadowColor={'#eab308'} />
           <Circle x={-50} y={50} size={14} fill={'#eab308'} shadowBlur={8} shadowColor={'#eab308'} />
           <Circle x={50} y={40} size={14} fill={'#eab308'} shadowBlur={8} shadowColor={'#eab308'} />
-          
+
           {/* Neural Synapses Links */}
           <Spline points={[new Vector2(0, 0), new Vector2(-60, -40)]} stroke={'rgba(234, 179, 8, 0.3)'} lineWidth={1.5} />
           <Spline points={[new Vector2(0, 0), new Vector2(60, -30)]} stroke={'rgba(234, 179, 8, 0.3)'} lineWidth={1.5} />
           <Spline points={[new Vector2(0, 0), new Vector2(-50, 50)]} stroke={'rgba(234, 179, 8, 0.3)'} lineWidth={1.5} />
           <Spline points={[new Vector2(0, 0), new Vector2(50, 40)]} stroke={'rgba(234, 179, 8, 0.3)'} lineWidth={1.5} />
-          
+
           <Txt
             y={95}
             fontFamily={'Manrope'}
@@ -791,9 +675,7 @@ export default makeScene2D(function* (view) {
           />
         </Rect>
 
-        {/* ========================================================= */}
         {/* ZONE 4 (x: 3800 to 4800): THE ERDOS AI MODEL PIPELINE LOOP */}
-        {/* ========================================================= */}
         <Layout opacity={stage8Opacity}>
           {/* Connection Line: Warehouse (4000) -> Researcher (4300) */}
           <Spline
@@ -890,7 +772,6 @@ export default makeScene2D(function* (view) {
             stroke={'#00f2fe'}
             lineWidth={1.5}
             radius={8}
-            clip
           >
             <Rect y={-50} width={280} height={24} fill={'#1e293b'}>
               <Txt fontFamily={'IBM Plex Sans'} fontSize={9} fontWeight={600} fill={'#64748b'} text={'cohort_query.sh'} />
@@ -912,7 +793,6 @@ export default makeScene2D(function* (view) {
             lineWidth={1.2}
             radius={8}
             opacity={tableOpacity}
-            clip
           >
             <Rect y={-65} width={300} height={30} fill={'#1e293b'}>
               <Txt fontFamily={'Manrope'} fontSize={10} fontWeight={800} fill={'#cbd5e1'} text={'FEASIBLE CANDIDATES FEEDS'} />
@@ -944,7 +824,7 @@ export default makeScene2D(function* (view) {
             <Txt y={65} fontFamily={'Manrope'} fontSize={11} fontWeight={800} fill={'#10b981'} text={'ACTIVE TRIAL'} />
           </Layout>
 
-          {/* Translucent stream packets for Stage 9 query/response */}
+          {/* Translucent stream particles for Stage 9 query/res */}
           <Circle ref={stage8Packet1} size={11} fill={'#eab308'} opacity={0} shadowBlur={8} shadowColor={'#eab308'} />
           <Circle ref={stage8Packet2} size={11} fill={'#eab308'} opacity={0} shadowBlur={8} shadowColor={'#eab308'} />
           <Circle ref={stage8Packet3} size={11} fill={'#eab308'} opacity={0} shadowBlur={8} shadowColor={'#eab308'} />
@@ -956,95 +836,86 @@ export default makeScene2D(function* (view) {
           ))}
         </Layout>
 
-        {/* RENDER PATIENTS SCATTER PLOT (Starts at bottom-left Caboodle Database [2250, 260], bursts into UMAP) */}
+        {/* RENDER PATIENTS SCATTER PLOT (Starts at bottom-left Caboodle db [2250, 260], bursts into UMAP) */}
         {points.map((pt, idx) => (
           <Circle
             key={`pt-a-${idx}`}
             ref={pt.ref}
-            position={warehouseZone3}
-            size={11}
-            fill={pt.isTarget ? '#10b981' : '#2c354e'}
+            position={() => {
+              const p = pt.progress();
+              const cosA = Math.cos(spaceRotation());
+              const sinA = Math.sin(spaceRotation());
+              const rotX = pt.pos3D.x * cosA - pt.pos3D.z * sinA;
+              const rotY = pt.pos3D.y;
+              const rotZ = pt.pos3D.x * sinA + pt.pos3D.z * cosA;
+
+              const distance = 800;
+              const scale3d = distance / (distance + rotZ);
+              const projected3D = new Vector2(
+                center.x + rotX * scale3d,
+                center.y + rotY * scale3d
+              );
+
+              // Interpolate between flat exact 2D position and rotating 3D projected position
+              const lerpX = pt.pos.x + (projected3D.x - pt.pos.x) * space3DInfluence();
+              const lerpY = pt.pos.y + (projected3D.y - pt.pos.y) * space3DInfluence();
+              let targetPos = new Vector2(lerpX, lerpY);
+
+              // If collapsing, move targetPos towards the center
+              const c = collapseProgress();
+              if (c > 0) {
+                targetPos = new Vector2(
+                  targetPos.x + (center.x - targetPos.x) * c,
+                  targetPos.y + (center.y - targetPos.y) * c
+                );
+              }
+
+              // Lerp from warehouseZone3 when streaming out
+              return new Vector2(
+                warehouseZone3.x + (targetPos.x - warehouseZone3.x) * p,
+                warehouseZone3.y + (targetPos.y - warehouseZone3.y) * p
+              );
+            }}
+            size={() => {
+              const p = pt.progress();
+              const cosA = Math.cos(spaceRotation());
+              const sinA = Math.sin(spaceRotation());
+              const rotX = pt.pos3D.x * cosA - pt.pos3D.z * sinA;
+              const rotZ = pt.pos3D.x * sinA + pt.pos3D.z * cosA;
+              const distance = 800;
+              const scale3d = distance / (distance + rotZ);
+
+              const targetSize = 11 + (11 * scale3d - 11) * space3DInfluence();
+              return targetSize * p;
+            }}
+            fill={() => pt.isTarget ? '#10b981' : '#64748b'} // target patients are green, non-target are gray
             opacity={0}
-            shadowBlur={pt.isTarget ? 10 : 0}
-            shadowColor={pt.isTarget ? 'rgba(16, 185, 129, 0.4)' : 'rgba(0, 0, 0, 0)'}
+            shadowBlur={() => pt.isTarget ? 10 : 0}
+            shadowColor={'rgba(16, 185, 129, 0.4)'}
           />
         ))}
+
       </Layout>
     </Layout>
   );
 
   // --- ANIMATION SEQUENCE ---
 
-  // Scene 1: Intro (Display Real-World clinical EHR ingestion pipeline)
-  yield* all(
-    headerTitle('1. Clinical Data Ingestion', 0.1),
-    headerSub('Live patient records (EHR) stream continuously from clinics and hospitals into database ledger logs.', 0.1),
-    headerOpacity(1, 0.5),
-  );
-
-  // Animate staggered stream of data packets
-  yield* all(
-    ingestionOpacity(1, 0.8),
-    animatePacket(packet1(), new Vector2(100, -220), new Vector2(380, 0), new Vector2(650, 0), 0),
-    animatePacket(packet2(), new Vector2(100, 0), new Vector2(380, 0), new Vector2(650, 0), 0.2),
-    animatePacket(packet3(), new Vector2(100, 220), new Vector2(380, 0), new Vector2(650, 0), 0.4),
-    animatePacket(packet4(), new Vector2(100, -220), new Vector2(380, 0), new Vector2(650, 0), 0.6),
-    animatePacket(packet5(), new Vector2(100, 0), new Vector2(380, 0), new Vector2(650, 0), 0.8),
-    animatePacket(packet6(), new Vector2(100, 220), new Vector2(380, 0), new Vector2(650, 0), 1.0),
-    delay(0.8, warehouseRef().scale(1.05, 0.25).to(1.0, 0.25)),
-    delay(1.4, warehouseRef().scale(1.05, 0.25).to(1.0, 0.25))
-  );
-
-  yield* waitUntil('scene2');
-
-  // Scene 2: Data Warehouse Platform (Caboodle, Clarity, SlicerDicer)
-  yield* all(
-    headerOpacity(0, 0.3),
-  );
-  yield* all(
-    cameraX(1500, 1.2, easeInOutCubic), // slide camera right!
-    headerTitle('2. Data Warehouse Platform (Caboodle, Clarity, SlicerDicer)', 0.4),
-    headerSub('Clinical researchers execute SQL query parameters from terminals linked directly to Caboodle and Clarity databases.', 0.4),
-    headerOpacity(1, 0.5),
-  );
-
-  // Execute terminal query
-  queryPulseRef().position(new Vector2(1500, 120));
-  yield* all(
-    terminalOpacity(1, 0.6),
-    delay(1.0, all(
-      queryPulseRef().opacity(1, 0.1),
-      queryPulseRef().position(new Vector2(650, 0), 0.8, easeInOutCubic),
-      delay(0.8, all(
-        queryPulseRef().opacity(0, 0.2),
-        warehouseRef().scale(1.1, 0.3).to(1.0, 0.3)
-      ))
-    ))
-  );
-
-  yield* waitUntil('scene3');
-
   // Scene 3: Patient Space (Sliding to high-dimensional patient vector space)
   yield* all(
-    headerOpacity(0, 0.3),
-  );
-  yield* all(
-    cameraX(2900, 1.4, easeInOutCubic), // slide camera right to Patient Space!
-    headerTitle('3. Patient Space', 0.4),
-    headerSub('Here are the patients that fit our clinical trial profile. Projected in UMAP, they reveal complex, irregular topologies.', 0.4),
+    headerTitle('3. Patient Space', 0.1),
+    headerSub('Here are the patients that fit our clinical trial profile. Projected in UMAP, they reveal complex, irregular topologies.', 0.1),
     headerOpacity(1, 0.5),
-
-    // Transition stages opacities (Fading Zone 1 & 2, fading in UMAP)
-    ingestionOpacity(0, 0.6),
-    terminalOpacity(0, 0.6),
+    taglineOpacity(1, 0.5),
     umapOpacity(1, 0.8),
-
+    space3DInfluence(1, 0.8), // Activate 3D depth perspective
+    spaceRotation(1.57, 3.5, easeInOutCubic), // Rotate 90 degrees to give the points depth, then stop!
     // Patient dots stream out of bottom-left Caboodle warehouse [2250, 260] ONE AT A TIME!
     all(
       ...points.map((pt, idx) =>
         delay(idx * 0.008, all( // rapid machine-gun delay (0.008s) for a beautiful continuous stream!
           pt.ref().opacity(1, 0.4),
-          pt.ref().position(pt.pos, 1.0, easeInOutCubic)
+          pt.progress(1, 1.0, easeInOutCubic)
         ))
       )
     )
@@ -1052,9 +923,7 @@ export default makeScene2D(function* (view) {
 
   yield* waitUntil('scene4');
 
-  // =========================================================
   // Scene 4: Too Narrow Filter (SLOWNESS RE-PACED: 10X SLOWER!)
-  // =========================================================
   yield* all(
     headerOpacity(0, 3.0), // 10x slower fade out (0.3s -> 3.0s)
   );
@@ -1082,11 +951,10 @@ export default makeScene2D(function* (view) {
       return pt.ref().scale(1.2, 4.0).to(1.0, 4.0);
     })
   );
+
   yield* waitUntil('scene5');
 
-  // =========================================================
   // Scene 5: Too Wide Filter (SLOWNESS RE-PACED: 10X SLOWER!)
-  // =========================================================
   yield* all(
     headerOpacity(0, 3.0), // 10x slower (0.3s -> 3.0s)
   );
@@ -1094,6 +962,9 @@ export default makeScene2D(function* (view) {
     headerTitle('5. Loose Boundaries: High Review Noise', 6.0), // 10x slower (0.6s -> 6.0s)
     headerSub('Making the box bigger to capture all candidates floods the study with a massive mountain of false positives.', 6.0),
     headerOpacity(1, 8.0), // 10x slower (0.8s -> 8.0s)
+
+    // Rotate another 90 degrees (from 90 to 180 total) to show 3D depth perspective of the wide box!
+    spaceRotation(3.14, 4.0, easeInOutCubic),
 
     // Swap boxes (10x slower: swap takes 5.0s / 8.0s)
     narrowBoxOpacity(0, 5.0),
@@ -1105,10 +976,10 @@ export default makeScene2D(function* (view) {
         return pt.ref().fill('#10b981', 6.0); // target turns green again
       } else {
         const inBox =
-          pt.pos.x >= center.x - 260 &&
-          pt.pos.x <= center.x + 260 &&
-          pt.pos.y >= center.y - 260 &&
-          pt.pos.y <= center.y + 260;
+          pt.pos.x >= center.x - 170 &&
+          pt.pos.x <= center.x + 170 &&
+          pt.pos.y >= center.y - 170 &&
+          pt.pos.y <= center.y + 170;
         if (inBox) {
           return all(
             pt.ref().opacity(0.8, 6.0),
@@ -1120,11 +991,10 @@ export default makeScene2D(function* (view) {
       }
     })
   );
+
   yield* waitUntil('scene6');
 
-  // =========================================================
   // Scene 6: Pulsar Conforming Mold (SLOWNESS RE-PACED: 10X SLOWER!)
-  // =========================================================
   yield* all(
     headerOpacity(0, 3.0), // 10x slower (0.3s -> 3.0s)
   );
@@ -1135,8 +1005,9 @@ export default makeScene2D(function* (view) {
 
     // Fade competitor wide box (10x slower: 0.6s -> 6.0s)
     wideBoxOpacity(0, 6.0),
-    // Fade in conforming molds (10x slower: 1.0s -> 10.0s)
+    // Fade in conforming molds and inflate the dismorphed donut! (10x slower: 1.0s -> 10.0s)
     moldOpacity(1, 10.0),
+    currentDonutScale(1.0, 8.0, easeInOutCubic),
 
     // Reset non-target points to faint muted grey and target points glow (10x slower: 0.6s -> 6.0s)
     ...points.map(pt => {
@@ -1150,6 +1021,7 @@ export default makeScene2D(function* (view) {
       }
     })
   );
+
   yield* waitUntil('scene7');
 
   // Scene 7: Feedback Loop & Ideal Region (Standard graceful pace)
@@ -1160,45 +1032,23 @@ export default makeScene2D(function* (view) {
     headerTitle('7. Continuous Learning Loop & Recommendation', 0.8),
     headerSub('Clinician curation feedback programmatically tightens each manifold, targeting small, ideal candidate regions.', 0.8),
     headerOpacity(1, 1.0),
-    taglineOpacity(1, 1.0),
+
+    // Drop all of the points away entirely!
+    ...points.map(pt => pt.ref().opacity(0, 0.6)),
 
     // Fade in Ideal Region Highlights
     idealRegionOpacity(1, 1.0),
 
-    // Morph the Pulsar molds to the refined coordinates! (SLOW morphing for mathematical elegance)
-    ...currentMoldPointsA.map((p, _i) =>
-      p(refinedMoldPointsA[_i], 2.5, easeInOutCubic)
-    ),
-
-    // Animate ideal points to scale up and pulse slightly
-    ...points.map(pt => {
-      if (pt.isIdeal) {
-        return pt.ref().fill('#00f2fe', 0.8); // glowing cyan for ideal patients
-      }
-      return pt.ref().opacity(pt.isTarget ? 0.35 : 0.04, 0.8); // dim non-ideal points slightly to draw eyes
-    })
+    // Morph the dismorphed donut to a tighter, more refined shape to show the improvement!
+    currentDonutScale(0.65, 3.0, easeInOutCubic),
   );
 
   // Ideal region pulsing target animation
-  yield* any(
-    idealRingRefA().scale(1.08, 0.8).to(0.96, 0.8).to(1.0, 0.5),
-    delay(
-      0.3,
-      all(
-        ...points
-          .filter(pt => pt.isIdeal)
-          .map(pt =>
-            pt.ref().scale(1.4, 0.6).to(1.0, 0.6)
-          )
-      )
-    )
-  );
+  yield* idealRingRefA().scale(1.08, 0.8).to(0.96, 0.8).to(1.0, 0.5);
 
   yield* waitUntil('scene8');
 
-  // =========================================================
-  // Scene 8: Erdos Model Genesis (NEW INTERMEDIATE SCENE!)
-  // =========================================================
+  // Scene 8: Erdos Model Genesis
   yield* all(
     headerOpacity(0, 0.3),
   );
@@ -1207,10 +1057,9 @@ export default makeScene2D(function* (view) {
     headerSub('The high-dimensional candidate manifold collapses to initialize the Erdos artificial intelligence model.', 0.5),
     headerOpacity(1, 0.6),
 
-    // Fade out Zone 3 structural UMAP lines
+    // Fade out Zone 3 structural UMAP lines (except mold which collapses!)
     narrowBoxOpacity(0, 0.6),
     wideBoxOpacity(0, 0.6),
-    moldOpacity(0, 0.6),
     idealRegionOpacity(0, 0.6),
 
     // Set Erdos starting position at the center of the Patient Space (2960, 20)
@@ -1218,9 +1067,10 @@ export default makeScene2D(function* (view) {
     erdosOpacity(1, 0.8),
     erdosRef().scale(0.9, 0.8, easeInOutCubic),
 
-    // THE COLLAPSE: All 150 points fly from UMAP coordinates into Erdos (2960, 20)
-    ...points.map(pt => pt.ref().position(new Vector2(2960, 20), 1.4, easeInOutCubic)),
-    ...points.map(pt => pt.ref().opacity(0, 1.2)),
+    // THE COLLAPSE: The rotating 3D dismorphed donut collapses into the Erdos core (2960, 20)
+    moldOpacity(0, 1.4, easeInOutCubic),
+    currentDonutScale(0, 1.4, easeInOutCubic),
+    currentDonutRadiusScale(0, 1.4, easeInOutCubic),
 
     // Golden core energy wave expands and pulses on hit
     delay(1.2, all(
@@ -1237,9 +1087,7 @@ export default makeScene2D(function* (view) {
 
   yield* waitUntil('scene9');
 
-  // =========================================================
-  // Scene 9: The Erdos Active Learning Loop (Old Scene 8)
-  // =========================================================
+  // Scene 9: The Erdos Active Learning Loop
   yield* all(
     headerOpacity(0, 0.3),
   );
@@ -1247,7 +1095,6 @@ export default makeScene2D(function* (view) {
     headerTitle('9. Erdos Active Learning Cycle', 0.6),
     headerSub('Unifying data systems, clinician feedback, and active learning models to optimize candidate discovery.', 0.6),
     headerOpacity(1, 0.8),
-
     // Fade in Stage 9 active elements (Caboodle warehouse, SQL console, and Trial icons appear)
     stage8Opacity(1, 0.8),
   );
