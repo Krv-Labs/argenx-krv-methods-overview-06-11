@@ -1,58 +1,65 @@
-# Whittling Animation — Argenx Pitch
+# Whittling Animation — Argenx Pitch (Motion Canvas Edition)
 
-Web-based Three.js animation that explains why threshold filtering fails for clinical trial candidate discovery and how Pulsar improves precision.
-The hero sculpture can be generated from `umap_3d_0/1/2` coordinates in `graves_patients_unified_labeled.csv` (150-patient subsample).
+This is an industry-standard, fully modular **Motion Canvas** project that explains why clinical trial candidate discovery using traditional threshold filters fails, and how Pulsar's shape-based, feedback-driven approach improves precision.
 
-## Project goal
+The animation delivers a single key concept:
+- **Competitor approach** = rigid rectangular filter (hypercube) that cuts off valid candidates and includes massive false-positive review noise.
+- **Pulsar approach** = adaptive, conforming spline/manifold that perfectly encloses the candidate shape and improves continuously with clinician feedback.
 
-Show Argenx executives, in under one minute, why threshold-based patient filtering creates either missed candidates or high manual review burden, and why Pulsar's shape-based + feedback-driven approach is better.
+---
 
-## Design documentation
+## 🚀 Features & Enhancements
 
-See [`DESIGN.md`](./DESIGN.md) for full goals, narrative, architecture, requirements, and success criteria.
+- **Modern 2D Vectors**: Replaced legacy 3D procedural shapes with a pristine 2D scatter-plot of 150 patients in UMAP space, perfectly representing real clinical trial data.
+- **Unified Narrative Flow**: Seamlessly animated caption cards, stat widgets (Candidate count, Review noise, Clinician hours), and conforming spline morphing.
+- **AI-Agent Integration**: Configured with **LeanCTX** and **Agent Skills Manager (asm)** for context-compressed execution and skill auditing.
+- **Double-Green Mandate**: Pre-configured strict ESLint flat rules and strict TypeScript compilation checks to guarantee 100% type safety.
 
-## Run locally
+---
 
-From the project root:
+## 💻 Getting Started
 
+### Prerequisites
+- Node.js (v18 or higher)
+- npm (v9 or higher)
+
+### Installation
 ```bash
-python -m http.server 8000
+npm install
 ```
 
-Open [http://localhost:8000](http://localhost:8000) in Chrome.
+### Run the Interactive Development Server
+To open the Motion Canvas editor in your browser and play/render the animation:
+```bash
+npm start
+```
+Then open [http://localhost:9000](http://localhost:9000) (or the port specified in console) in Chrome.
 
-## URL modes for presenting and recording
+---
 
-- Default presenter mode: `http://localhost:8000`
-- Deck mode (cleaner controls): `http://localhost:8000?deck=1`
-- Capture mode (no controls/brand overlays): `http://localhost:8000?clean=1`
-- Looping capture mode: `http://localhost:8000?clean=1&loop=1`
-- Figma mode (16:9 fitted canvas): `http://localhost:8000?figma=1`
-- Figma clean capture: `http://localhost:8000?figma=1&clean=1`
-- Pause on load (manual cue): append `&autoplay=0`
+## 🧹 Quality Assurance (Lint & Typecheck)
 
-## Presenter controls
+To run strict static checks and verify types:
+```bash
+# Run both
+npm run lint && npm run typecheck
+```
 
-- `Space` or `ArrowRight`: next scene
-- `ArrowLeft`: previous scene
-- `R`: reset to scene 1
-- `A`: autoplay full sequence
-- `P`: pause/resume timeline
-- `F`: toggle fullscreen
-- `G`: toggle 16:9 safe guides
+---
 
-## Story flow in the animation
+## 📁 Repository Organization & Backups
 
-1. Ideal patient profile is irregular (not a clean rectangle)
-2. Threshold filtering too narrow misses patients
-3. Threshold filtering too wide creates heavy false-positive review
-4. Pulsar mold conforms to real candidate shape
-5. Clinician feedback improves precision over time
+The original Three.js implementation has been fully preserved for reference:
+- `src-threejs/` — Original Three.js animation sources
+- `index-threejs.html` — Original entry HTML
+- `styles-threejs.css` — Original styles overlay
 
-## Export for Figma / Keynote / PowerPoint
+All active, production Motion Canvas files reside in the root and under `src/`.
 
-1. Start local server and open `http://localhost:8000?figma=1&clean=1`
-2. Press `F` for fullscreen
-3. Press `A` for autoplay
-4. Record screen on macOS with `Cmd+Shift+5` at 1920x1080
-5. Insert resulting `.mov` or exported `.mp4` into Figma Slides / Keynote / PowerPoint
+---
+
+## 🤖 AI Agents & Contributors
+If you are an AI agent working on this repository:
+- You MUST read and adhere to [`agents.md`](./agents.md).
+- You MUST run all shell commands using `lean-ctx` (e.g., `lean-ctx -c npm run build`).
+- You MUST verify that `npm run lint && npm run typecheck` passes with zero errors before completing your tasks.

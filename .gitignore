@@ -11,3 +11,5 @@ wheels/
 
 # Patient data / large data files
 *.csv
+
+node_modules
