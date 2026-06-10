@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pulsar — The Cohort That Was Always There</title>
+<!--
+  ────────────────────────────────────────────────────────────────────────
+  PULSAR vs. THE RIGID BOX — executive topology briefing
+  Single-file, zero-build. All data is 100% synthetic demonstration data.
+  No PHI, no clinical telemetry, no biological content of any kind.
+
+  Rendering architecture (deliberate mix):
+    STATE A  →  Heerich.js (voxel→SVG, painter's algorithm) — its rigid
+                integer grid and boolean `subtract` mode ARE the metaphor.
+    STATE B  →  the SAME Heerich engine, additive physics: scan planes read
+                the intact block, consensus cells light up, the shape lifts out.
+  ────────────────────────────────────────────────────────────────────────
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Azeret+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Instrument Serif"', 'Georgia', 'serif'],
+          mono: ['"Azeret Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          ink: '#ffffff',
+          panel: '#f7f8fa',
+          bone: '#1f2434',
+          dim: '#7d7866',
+          steel: '#4d5a72',
+          alert: '#d92642',
+          notes: '#0d7e8f',
+          labs: '#a96a08',
+          meds: '#9c27b8',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --ink: #ffffff;
+    --bone: #1f2434;
+    --dim: #6d7480;
+    --steel: #4d5a72;
+    --alert: #d92642;
+    --notes: #0d7e8f;
+    --labs: #a96a08;
+    --meds: #9c27b8;
+    --hairline: rgba(28, 34, 48, 0.10);
+    --soft: #f7f8fa;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    color: var(--bone);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .hairline-b { border-bottom: 1px solid var(--hairline); }
+  .hairline-t { border-top: 1px solid var(--hairline); }
+  .hairline-r { border-right: 1px solid var(--hairline); }
+
+  /* ── narrative rail reveal ───────────────────────────── */
+  .reveal { opacity: 0; transform: translateY(14px); animation: rise 0.7s cubic-bezier(.22,1,.36,1) forwards; }
+  .reveal.d1 { animation-delay: .05s } .reveal.d2 { animation-delay: .14s }
+  .reveal.d3 { animation-delay: .24s } .reveal.d4 { animation-delay: .36s }
+  .reveal.d5 { animation-delay: .48s }
+  @keyframes rise { to { opacity: 1; transform: none } }
+
+  /* ── State A voxel host ──────────────────────────────── */
+  #boxHost, #scanHost { animation: bob 9s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-9px) } }
+  #boxHost svg, #scanHost svg { width: 100%; height: 100%; display: block; overflow: visible; }
+  #boxHost svg path, #scanHost svg path { transition: opacity .2s linear; }
+
+  /* ── layer crossfade ─────────────────────────────────── */
+  .layer { position: absolute; inset: 0; transition: opacity .65s cubic-bezier(.4,0,.2,1), transform .65s cubic-bezier(.4,0,.2,1); }
+  .layer.off { opacity: 0; transform: scale(.985); pointer-events: none; }
+
+  /* ── executive data card ─────────────────────────────── */
+  #card {
+    position: absolute; z-index: 40; width: 290px; pointer-events: none;
+    background: rgba(255,255,255,.98);
+    border: 1px solid rgba(28,34,48,.16);
+    box-shadow: 0 16px 38px rgba(31,36,52,.10), 0 2px 8px rgba(31,36,52,.06);
+    opacity: 0; transform: translateY(8px) scale(.98);
+    transition: opacity .22s ease, transform .22s cubic-bezier(.22,1,.36,1);
+  }
+  #card.show { opacity: 1; transform: none; }
+  #card .accent { width: 3px; align-self: stretch; }
+
+  /* ── deck (controls) ─────────────────────────────────── */
+  .dot-btn { transition: color .25s, border-color .25s, background .25s; }
+  .dot-btn .tick { width: 6px; height: 6px; border-radius: 999px; border: 1px solid var(--dim); transition: all .25s; }
+  .dot-btn.active .tick { background: var(--bone); border-color: var(--bone); box-shadow: none; }
+  .dot-btn.active { color: var(--bone); }
+  .dot-btn.done .tick { border-color: var(--bone); }
+
+  .nav-btn { transition: all .2s; }
+  .nav-btn:hover:not(:disabled) { border-color: rgba(28,34,48,.42); color: var(--bone); background: var(--soft); }
+  .nav-btn:disabled { opacity: .3; cursor: default; }
+
+  /* segmented A/B toggle */
+  #segAB { position: relative; }
+  #segThumb {
+    position: absolute; top: 3px; bottom: 3px; width: calc(50% - 3px);
+    background: rgba(28,34,48,.1); border: 1px solid rgba(28,34,48,.35);
+    transition: left .35s cubic-bezier(.22,1,.36,1);
+  }
+  .seg-opt { position: relative; z-index: 1; transition: color .3s; }
+
+  /* filter chips (State A) */
+  .chip { border: 1px solid var(--hairline); color: var(--dim); background: var(--soft); transition: all .35s; }
+  .chip.cutting { border-color: var(--alert); color: var(--alert); box-shadow: 0 0 16px rgba(217,38,66,.25), inset 0 0 10px rgba(217,38,66,.08); }
+  .chip.done { border-color: rgba(28,34,48,.4); color: var(--bone); }
+  .chip .arrow { opacity: .45; }
+
+  /* giant stage numeral */
+  #stageNum {
+    font-family: 'Instrument Serif', serif; font-style: italic;
+    font-size: clamp(64px, 10vw, 132px); line-height: .8;
+    color: transparent; -webkit-text-stroke: 1px rgba(28,34,48,.08);
+    user-select: none;
+  }
+
+  .kicker { letter-spacing: .22em; }
+  .takeaway { border-left: 2px solid; background: var(--soft); }
+  .takeaway.cold { border-color: rgba(217,38,66,.65); }
+  .takeaway.warm { border-color: rgba(13,126,143,.65); }
+
+  .hint-pulse { animation: hintpulse 2.4s ease-in-out infinite; }
+  @keyframes hintpulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+
+  .chip.scanning { border-color: var(--notes); color: var(--notes); box-shadow: 0 0 16px rgba(13,126,143,.25), inset 0 0 10px rgba(13,126,143,.08); }
+
+  /* B4 shortlist review rows */
+  .sl-row { transition: border-color .25s, opacity .25s; }
+  .sl-row button { transition: all .2s; cursor: pointer; }
+  .sl-row button:hover { border-color: var(--bone); color: var(--bone); }
+  .sl-row.acc { border-color: rgba(13,126,143,.65); }
+  .sl-row.acc .sl-acc { background: rgba(13,126,143,.12); border-color: var(--notes); color: var(--notes); }
+  .sl-row.rej { opacity: .45; }
+  .sl-row.rej .sl-rej { background: rgba(217,38,66,.10); border-color: var(--alert); color: var(--alert); }
+
+  /* A4 block-size range input */
+  #blockRange { -webkit-appearance: none; appearance: none; height: 2px; background: rgba(28,34,48,.25); }
+  #blockRange::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 15px; height: 15px;
+    background: var(--ink); border: 1.5px solid var(--bone);
+    border-radius: 999px; cursor: ew-resize;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { animation-duration: .01s; animation-delay: 0s !important; }
+    #boxHost, #scanHost { animation: none; }
+    .layer { transition-duration: .01s; }
+  }
+</style>
+</head>
+
+<body class="font-mono text-sm">
+<div id="app" class="h-full grid" style="grid-template-rows: 50px 1fr 74px;">
+
+  <!-- ═══════════ HEADER ═══════════ -->
+  <header class="hairline-b flex items-center justify-between px-6 relative z-30 bg-white">
+    <div class="font-display text-[25px] leading-none tracking-wide">P<span class="italic">u</span>lsar<span class="text-alert">.</span></div>
+    <div class="text-[10px] uppercase tracking-[0.22em] text-dim hidden md:block">Cohort discovery briefing</div>
+    <div id="segAB" class="hidden">
+      <div id="segThumb" style="left:3px"></div>
+      <div class="seg-opt" data-side="a">A</div>
+      <div class="seg-opt" data-side="b">B</div>
+    </div>
+  </header>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main class="grid min-h-0" style="grid-template-columns: minmax(300px, 360px) 1fr;">
+
+    <!-- narrative rail -->
+    <aside id="rail" class="hairline-r px-7 py-7 flex flex-col gap-4 overflow-y-auto relative z-20 bg-white">
+      <div id="railKicker" class="reveal d1 kicker text-[9px] uppercase text-dim"></div>
+      <h2 id="railTitle" class="reveal d2 font-display text-[29px] leading-[1.08] text-bone" style="text-wrap: balance;"></h2>
+      <p id="railBody" class="reveal d3 text-[12px] leading-relaxed text-steel/90"></p>
+
+      <div id="railChips" class="reveal d4 flex-col gap-2 hidden"></div>
+
+      <div id="railMetrics" class="reveal d4 grid grid-cols-2 gap-x-4 gap-y-3 text-[10.5px]"></div>
+
+      <!-- A4: interactive block-size control -->
+      <div id="railSlider" class="reveal d4 hidden flex-col gap-4">
+        <div>
+          <div class="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-dim mb-2">
+            <span>Tighter block</span><span>Looser block</span>
+          </div>
+          <input id="blockRange" type="range" min="0" max="100" value="50"
+            class="w-full accent-bone cursor-pointer" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="border border-[rgba(217,38,66,.3)] px-3 py-2.5">
+            <div class="text-[8.5px] uppercase tracking-[0.18em] text-alert/80 mb-1">Patients missed</div>
+            <div id="missVal" class="font-display text-[26px] leading-none text-alert tabular-nums">0</div>
+          </div>
+          <div class="border border-[rgba(28,34,48,.3)] px-3 py-2.5">
+            <div class="text-[8.5px] uppercase tracking-[0.18em] text-steel mb-1">Review hours / site</div>
+            <div id="hrsVal" class="font-display text-[26px] leading-none text-bone tabular-nums">0</div>
+          </div>
+        </div>
+        <div>
+          <svg id="costCurve" viewBox="0 0 300 96" class="w-full" preserveAspectRatio="none" style="height:96px">
+            <line x1="0" y1="78" x2="300" y2="78" stroke="rgba(28,34,48,.22)" stroke-width="1"/>
+            <path id="curveMiss" fill="none" stroke="#d92642" stroke-width="1.4" opacity=".55"/>
+            <path id="curveHrs"  fill="none" stroke="#4d5a72" stroke-width="1.4" opacity=".55"/>
+            <path id="curveTotal" fill="none" stroke="#1f2434" stroke-width="1.8"/>
+            <line id="optLine" x1="0" y1="6" x2="0" y2="84" stroke="rgba(28,34,48,.35)" stroke-width="1" stroke-dasharray="3 3"/>
+            <circle id="curveDot" r="3.5" fill="#1f2434"/>
+          </svg>
+          <div class="flex items-center justify-between text-[8.5px] uppercase tracking-[0.16em] text-dim mt-1">
+            <span>Total cost</span>
+            <span id="optNote" class="text-bone/70">Best case still ≈ <span class="text-bone">31 hrs</span> review</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="railTakeaway" class="takeaway reveal d5 px-4 py-3 text-[11px] leading-relaxed">
+        <div id="railTakeawayText" class="text-bone/90"></div>
+      </div>
+
+      <div id="railHint" class="text-[9px] uppercase tracking-[0.16em] text-dim mt-auto pt-4 hidden">
+        <span id="railHintText"></span>
+      </div>
+    </aside>
+
+    <!-- stage -->
+    <section id="stage" class="relative min-w-0 overflow-hidden">
+      <div id="stageNum" class="absolute top-5 right-8 z-10">01</div>
+
+      <div id="boxLayer" class="layer flex items-center justify-center">
+        <div id="boxHost" class="w-[min(72%,760px)] h-[82%]"></div>
+      </div>
+
+      <div id="scanLayer" class="layer off flex items-center justify-center">
+        <div id="scanHost" class="w-[min(72%,760px)] h-[82%]"></div>
+        <!-- B4: ranked candidate shortlist + clinician review -->
+        <div id="shortlist" class="hidden absolute top-6 right-6 bottom-6 w-[290px] z-20 flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-[9px] uppercase tracking-[0.22em] text-notes/90">Ranked shortlist · synthetic</div>
+            <div id="approvedCount" class="text-[9px] uppercase tracking-[0.18em] text-dim tabular-nums">0 / 5 reviewed</div>
+          </div>
+          <div id="shortlistRows" class="flex flex-col gap-1.5 overflow-y-auto pr-1"></div>
+          <div class="mt-2 pt-2 hairline-t text-[9px] leading-relaxed text-dim">
+            Accept / reject feedback reshapes the starting form for the next search.
+            <span class="text-bone/70">Final selection stays with the clinician.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- executive data card -->
+      <div id="card" class="flex">
+        <div class="accent" id="cardAccent"></div>
+        <div class="px-4 py-3.5 flex-1">
+          <div class="text-[8.5px] uppercase tracking-[0.22em] text-dim mb-2">Cell detail</div>
+          <div id="cardTitle" class="font-display text-[19px] leading-tight text-bone mb-1.5"></div>
+          <p id="cardBody" class="text-[10.5px] leading-relaxed text-steel/90 mb-2"></p>
+          <div id="cardStat" class="text-[10px] uppercase tracking-[0.14em]"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══════════ CONTROL DECK ═══════════ -->
+  <footer class="hairline-t flex items-center justify-between px-6 relative z-30 bg-white">
+    <div class="flex items-center gap-5">
+      <div class="flex items-center gap-4" id="dotsA"></div>
+      <div class="w-px h-6 bg-[rgba(28,34,48,.14)]"></div>
+      <div class="flex items-center gap-4" id="dotsB"></div>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="btnPrev" class="nav-btn border border-[rgba(28,34,48,.22)] text-dim px-4 py-2 text-[10px] uppercase tracking-[0.18em]">Prev</button>
+      <button id="btnNext" class="nav-btn border border-[rgba(28,34,48,.34)] text-bone px-4 py-2 text-[10px] uppercase tracking-[0.18em]">Next</button>
+    </div>
+  </footer>
+</div>
+
+<script type="module">
+import { Heerich } from 'https://cdn.jsdelivr.net/npm/heerich@0.14.0/+esm';
+
+/* ════════════════════════ utils ════════════════════════ */
+const $ = (s) => document.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeIO = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches
+  || new URLSearchParams(location.search).has('nomotion');
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ════════════════════════ copy ════════════════════════ */
+const STAGES = [
+  {
+    id: 'a1', label: 'Block', mode: 'box', num: '01',
+    kicker: '01 / 08',
+    title: 'Start with every possible candidate.',
+    body: 'The EHR begins as an undifferentiated block: 9,412 candidate records, represented as cells. At this point, no patient-level structure has been used.',
+    metrics: [['Raw candidates', '9,412'], ['Encounters', '1.28 M'], ['Shaping done', '0'], ['Clinician hours', '—']],
+    takeaway: 'The hard part is not finding a smaller pile. It is finding the right shape inside the data.',
+    tone: 'cold',
+    hint: 'Hover the block',
+  },
+  {
+    id: 'a2', label: 'Filters', mode: 'box', num: '02',
+    kicker: '02 / 08',
+    title: 'Rigid filters remove patients before review.',
+    body: 'A code, age range, or lab threshold slices through the pool. Patients outside the rule are excluded before anyone can inspect whether they belong.',
+    metrics: [],
+    chips: [
+      { ax: 'x', code: 'ICD-10 · E05.*', from: '9,412', to: '3,890' },
+      { ax: 'y', code: 'AGE · 18–65', from: '3,890', to: '2,113' },
+      { ax: 'z', code: 'TRAb ≥ 1.75 IU/L', from: '2,113', to: '187' },
+    ],
+    takeaway: 'The filter order becomes part of the result, even when the clinical signal is not box-shaped.',
+    tone: 'cold',
+  },
+  {
+    id: 'a3', label: 'Handover', mode: 'box', num: '03',
+    kicker: '03 / 08',
+    title: 'The smaller handoff is still manual.',
+    body: 'Only 187 records survive the filters. The clinician still has to review them, while near-boundary candidates with similar signal are already gone.',
+    metrics: [['Handed over', '187'], ['Pre-cut away', '9,225'], ['Lost near boundary', '~642'], ['Still manual', '100%']],
+    chips: [
+      { ax: 'x', code: 'ICD-10 · E05.*', from: '9,412', to: '3,890', done: true },
+      { ax: 'y', code: 'AGE · 18–65', from: '3,890', to: '2,113', done: true },
+      { ax: 'z', code: 'TRAb ≥ 1.75 IU/L', from: '2,113', to: '187', done: true },
+    ],
+    takeaway: 'A narrow query reduces volume, but it does not produce a validated cohort.',
+    tone: 'cold',
+    hint: 'Hover the excluded cells',
+  },
+  {
+    id: 'a4', label: 'Tradeoff', mode: 'box', num: '04', slider: true,
+    kicker: '04 / 08',
+    title: 'The block size problem has no clean answer.',
+    body: 'A tight block misses candidates. A loose block creates chart-review burden. Even the best compromise keeps manual work in the loop.',
+    metrics: [],
+    takeaway: 'Threshold tuning shifts the failure mode; it does not solve cohort discovery.',
+    tone: 'cold',
+    hint: 'Drag the slider',
+  },
+  {
+    id: 'b1', label: 'Scan', mode: 'scan', num: '05',
+    kicker: '05 / 08',
+    title: 'Pulsar reads the whole block.',
+    body: 'Instead of removing records, Pulsar scans across notes, labs, and medication timelines. Each pass reads the full pool and leaves it intact.',
+    metrics: [],
+    chips: [
+      { ax: 'x', code: 'SCAN 01 · NOTE EMBEDDINGS', from: '9,412', to: '9,412 kept' },
+      { ax: 'y', code: 'SCAN 02 · LAB TRAJECTORIES', from: '9,412', to: '9,412 kept' },
+      { ax: 'z', code: 'SCAN 03 · MED TIMELINES', from: '9,412', to: '9,412 kept' },
+    ],
+    scanChips: true,
+    takeaway: 'The same data can be examined without making exclusion the first operation.',
+    tone: 'warm',
+    hint: 'Hover the scan',
+  },
+  {
+    id: 'b2', label: 'Consensus', mode: 'scan', num: '06',
+    kicker: '06 / 08',
+    title: 'Agreement becomes structure.',
+    body: 'Cells light up where independent views agree. The cohort starts to appear inside the intact pool, without depending on a single filter path.',
+    metrics: [['Views reconciled', '3'], ['Consensus cells', '33'], ['Order effects', 'none'], ['Patients lost', '0']],
+    takeaway: 'No single representation gets to decide alone.',
+    tone: 'warm',
+    hint: 'Hover the lit cells',
+  },
+  {
+    id: 'b3', label: 'Shape', mode: 'scan', num: '07',
+    kicker: '07 / 08',
+    title: 'The cohort shape separates from the pool.',
+    body: 'Stable signal remains while one-view noise fades. The red frame shows the best threshold box; it still misses part of the discovered shape.',
+    metrics: [['Patients surfaced', '229'], ['Missed by the box', '42'], ['Cells destroyed', '0'], ['Stable across thresholds', 'yes']],
+    takeaway: 'Pulsar surfaces the shape directly, including candidates the box cannot reach.',
+    tone: 'warm',
+    hint: 'Hover the shape',
+  },
+  {
+    id: 'b4', label: 'Review', mode: 'scan', num: '08', shortlist: true,
+    kicker: '08 / 08',
+    title: 'The clinician reviews a ranked shortlist.',
+    body: 'The discovered shape lifts out as traceable candidates. The clinician judges quality and makes the final selection.',
+    metrics: [['Shortlisted', '229'], ['Clinician role', 'review + select'], ['Per-EHR fit', 'learned mold'], ['Improves with use', 'yes']],
+    takeaway: 'Clinical expertise moves from manual curation to decision-making.',
+    tone: 'warm',
+    hint: 'Review candidates',
+  },
+];
+
+const CARDS = {
+  pool:   { color: '#4d5a72', title: 'Candidate pool', body: 'One cell represents a bundle of candidate records. No structure has been applied yet.', stat: '9,412 candidates' },
+  cohort: { color: '#1f2434', title: 'Filtered cohort', body: 'These records matched every rule. Their connection is the query, not a discovered shape.', stat: '187 retained · 2.0% of pool' },
+  ghost:  { color: '#d92642', title: 'Discarded cell', body: 'Removed by a rule before review. Any shared signal is now unavailable downstream.', stat: 'excluded before review' },
+  lost:   { color: '#d92642', title: 'Near-boundary loss', body: 'Clinically similar signal, excluded by a hard boundary.', stat: '~642 near-boundary patients' },
+  missTrue: { color: '#d92642', title: 'Missed candidate', body: 'Part of the real shape, but outside the current block.', stat: 'missed · never reviewed' },
+  waste:   { color: '#7d7866', title: 'Review burden', body: 'A record bundle inside the handoff that still requires manual review.', stat: 'manual curation cost' },
+  cage:    { color: '#4d5a72', title: 'Intact pool', body: 'The same candidate block remains intact while scan planes pass through it.', stat: 'destroyed: 0' },
+  plane:   { color: '#0d7e8f', title: 'Scan plane', body: 'Reads the pool without deleting records behind it.', stat: 'non-destructive read' },
+  consensus: { color: '#0d7e8f', title: 'Consensus cell', body: 'Multiple views agree on this region of the pool.', stat: 'multi-view signal' },
+  partial: { color: '#7d7866', title: 'Unstable signal', body: 'Flagged by one view only, then allowed to fade.', stat: 'does not stabilize' },
+  flare42: { color: '#0d7e8f', title: 'Missed sub-cohort', body: 'A stable branch outside the best threshold box.', stat: '42 patients · 0 in box' },
+  satellite: { color: '#9c27b8', title: 'Satellite cluster', body: 'A stable group separated from the main mass.', stat: 'persists across thresholds' },
+  outlier: { color: '#a96a08', title: 'Kept edge case', body: 'Detected by agreement between views, not by a single rule.', stat: 'reachable by shape' },
+  redbox:  { color: '#d92642', title: 'Best threshold box', body: 'The optimal box still clips part of the discovered cohort shape.', stat: '187 in box vs 229 in shape' },
+};
+
+/* ═══════════════════ executive card control ═══════════════════ */
+const cardEl = $('#card'), stageEl = $('#stage');
+let cardKey = null;
+const Card = {
+  show(key, px, py) {
+    const c = CARDS[key]; if (!c) return;
+    if (cardKey !== key) {
+      $('#cardTitle').textContent = c.title;
+      $('#cardBody').textContent = c.body;
+      $('#cardStat').textContent = c.stat;
+      $('#cardStat').style.color = c.color;
+      $('#cardAccent').style.background = c.color;
+      cardKey = key;
+    }
+    const r = stageEl.getBoundingClientRect();
+    const x = clamp(px + 22, 10, r.width - 300);
+    const y = clamp(py - 30, 10, r.height - 190);
+    cardEl.style.left = x + 'px';
+    cardEl.style.top = y + 'px';
+    cardEl.classList.add('show');
+  },
+  hide() { cardEl.classList.remove('show'); cardKey = null; },
+};
+
+/* ════════════════════════════════════════════════════════════════
+   STATE A — “The Rigid Box” (Heerich.js voxel → SVG)
+   ════════════════════════════════════════════════════════════════ */
+const W = 12, H = 9, D = 12;             // monolith dimensions
+const KEEP = { x: [5, 7], y: [3, 5], z: [5, 7] };  // surviving cube
+const CUT_T = { x: [5, 4], y: [3, 3], z: [5, 4] }; // slab depths [low, high]
+const LOST_CELLS = [[4,4,6],[8,3,5],[6,2,6],[5,6,5],[8,5,7],[6,4,4],[7,3,8]];
+
+/* A4 — the true cohort's organic shape, in block coordinates: a core blob,
+   a flare arm reaching the block's corner, a satellite cluster, outliers. */
+const TRUE_ROLES = [];
+const TRUE_CELLS = (() => {
+  const cells = [], seen = new Set();
+  const put = (x, y, z, role) => {
+    x = Math.round(x); y = Math.round(y); z = Math.round(z);
+    if (x < 0 || x >= W || y < 0 || y >= H || z < 0 || z >= D) return;
+    const k = `${x},${y},${z}`;
+    if (!seen.has(k)) { seen.add(k); cells.push([x, y, z]); TRUE_ROLES.push(role); }
+  };
+  for (let x = 5; x <= 7; x++) for (let y = 3; y <= 5; y++) for (let z = 5; z <= 7; z++)
+    if (Math.abs(x - 6) + Math.abs(y - 4) + Math.abs(z - 6) <= 2) put(x, y, z, 'core');
+  for (let t = 0; t <= 7; t++) put(7 + t * 0.65, 4 + t * 0.3, 7 + t * 0.6, 'flare');
+  [[2,6,3],[3,6,3],[2,5,3],[2,6,4],[3,5,2]].forEach((p) => put(...p, 'satellite'));
+  [[10,2,2],[1,2,9],[9,7,10]].forEach((p) => put(...p, 'outlier'));
+  return cells;
+})();
+const TRUE_SET = new Set(TRUE_CELLS.map((p) => p.join(',')));
+
+function blockDims(s) {
+  const bw = Math.round(lerp(3, W, s)), bh = Math.round(lerp(3, H, s)), bd = Math.round(lerp(3, D, s));
+  const x0 = clamp(6 - Math.floor(bw / 2), 0, W - bw);
+  const y0 = clamp(4 - Math.floor(bh / 2), 0, H - bh);
+  const z0 = clamp(6 - Math.floor(bd / 2), 0, D - bd);
+  return { x0, y0, z0, bw, bh, bd };
+}
+function blockStats(s) {
+  const d = blockDims(s);
+  const inside = ([x, y, z]) =>
+    x >= d.x0 && x < d.x0 + d.bw && y >= d.y0 && y < d.y0 + d.bh && z >= d.z0 && z < d.z0 + d.bd;
+  const captured = TRUE_CELLS.filter(inside).length;
+  const missed = (TRUE_CELLS.length - captured) * 7;            // 1 cell ≈ 7 patients
+  const hours = Math.round((d.bw * d.bh * d.bd - captured) * 0.1); // chart-review hours
+  return { ...d, captured, missed, hours, cost: missed * 1.5 + hours };
+}
+
+class BoxView {
+  constructor(host) {
+    this.host = host;
+    this.h = new Heerich({
+      camera: { type: 'isometric' },
+      gap: 0.07,
+    });
+    this.cuts = { x: 0, y: 0, z: 0 };
+    this.heat = { x: 0, y: 0, z: 0 };
+    this.ghosts = false;
+    this.stage = 'a1';
+    this.raf = null;
+
+    host.addEventListener('pointermove', (e) => this.onMove(e));
+    host.addEventListener('pointerleave', () => Card.hide());
+  }
+
+  slab(ax) {
+    const t = this.cuts[ax];
+    return [Math.round(t * CUT_T[ax][0]), Math.round(t * CUT_T[ax][1])];
+  }
+
+  rebuild() {
+    const h = this.h;
+    h.clear();
+    const [lx, rx] = this.slab('x'), [ly, ry] = this.slab('y'), [lz, rz] = this.slab('z');
+    const heat = this.heat;
+
+    h.applyGeometry({
+      type: 'box', position: [0, 0, 0], size: [W, H, D],
+      meta: { id: 'core' },
+      style: {
+        default: (x, y, z) => {
+          let hot = 0;
+          if (heat.x > 0 && ((lx > 0 && x === lx) || (rx > 0 && x === W - 1 - rx))) hot = heat.x;
+          if (heat.y > 0 && ((ly > 0 && y === ly) || (ry > 0 && y === H - 1 - ry))) hot = Math.max(hot, heat.y);
+          if (heat.z > 0 && ((lz > 0 && z === lz) || (rz > 0 && z === D - 1 - rz))) hot = Math.max(hot, heat.z);
+          if (hot > 0.02) {
+            return {
+              fill: `oklch(${0.72 - 0.1 * hot} ${0.05 + 0.16 * hot} 22)`,
+              stroke: 'oklch(0.48 0.14 22)', strokeWidth: 0.7,
+            };
+          }
+          const L = 0.85 + (y / H) * 0.05 + (((x + z) & 1) ? 0.008 : 0);
+          return {
+            fill: `oklch(${L} 0.006 250)`,
+            stroke: `oklch(${L * 0.5} 0.012 250)`, strokeWidth: 0.7,
+          };
+        },
+      },
+    });
+
+    if (lx) h.removeGeometry({ type: 'box', position: [0, 0, 0], size: [lx, H, D] });
+    if (rx) h.removeGeometry({ type: 'box', position: [W - rx, 0, 0], size: [rx, H, D] });
+    if (ly) h.removeGeometry({ type: 'box', position: [0, 0, 0], size: [W, ly, D] });
+    if (ry) h.removeGeometry({ type: 'box', position: [0, H - ry, 0], size: [W, ry, D] });
+    if (lz) h.removeGeometry({ type: 'box', position: [0, 0, 0], size: [W, H, lz] });
+    if (rz) h.removeGeometry({ type: 'box', position: [0, 0, D - rz], size: [W, H, rz] });
+
+    if (this.ghosts) {
+      const isCore = (x, y, z) =>
+        x >= KEEP.x[0] && x <= KEEP.x[1] && y >= KEEP.y[0] && y <= KEEP.y[1] && z >= KEEP.z[0] && z <= KEEP.z[1];
+      const isLost = (x, y, z) => LOST_CELLS.some((p) => p[0] === x && p[1] === y && p[2] === z);
+      h.applyGeometry({
+        type: 'fill',
+        bounds: [[KEEP.x[0] - 1, KEEP.y[0] - 1, KEEP.z[0] - 1], [KEEP.x[1] + 2, KEEP.y[1] + 2, KEEP.z[1] + 2]],
+        test: (x, y, z) => !isCore(x, y, z) && !isLost(x, y, z),
+        opaque: false, meta: { id: 'ghost' },
+        style: { default: { fill: 'none', stroke: 'rgba(217,38,66,0.30)', strokeWidth: 0.5, strokeDasharray: '2.5 3' } },
+      });
+      for (const p of LOST_CELLS) {
+        h.applyGeometry({
+          type: 'box', position: p, size: 1, opaque: false, meta: { id: 'lost' },
+          style: {
+            default: { fill: 'rgba(217,38,66,0.18)', stroke: '#d92642', strokeWidth: 0.9 },
+            top: { fill: 'rgba(217,38,66,0.26)', hatch: { angle: 45, period: 4, stroke: '#d92642', strokeWidth: 0.45 } },
+          },
+        });
+      }
+    }
+
+    this.host.innerHTML = h.toSVG({ padding: 46 });
+    this.svg = this.host.querySelector('svg');
+  }
+
+  setStage(id) {
+    this.stage = id;
+    cancelAnimationFrame(this.raf);
+    if (id === 'a1') {
+      this.cuts = { x: 0, y: 0, z: 0 }; this.heat = { x: 0, y: 0, z: 0 };
+      this.ghosts = false; this.rebuild();
+    } else if (id === 'a2') {
+      this.ghosts = false;
+      if (REDUCED) {
+        this.cuts = { x: 1, y: 1, z: 1 }; this.heat = { x: 0, y: 0, z: 0 };
+        this.rebuild(); Deck.chipProgress('x', 1); Deck.chipProgress('y', 1); Deck.chipProgress('z', 1);
+      } else this.playCuts();
+    } else if (id === 'a3') {
+      this.cuts = { x: 1, y: 1, z: 1 }; this.heat = { x: 0, y: 0, z: 0 };
+      this.ghosts = true; this.rebuild();
+    } else if (id === 'a4') {
+      this.rebuildSlider(Slider.s);
+    }
+  }
+
+  /* A4: variable-size block + the true cohort cells it misses */
+  rebuildSlider(s) {
+    const h = this.h;
+    h.clear();
+    const d = blockDims(s);
+    h.applyGeometry({
+      type: 'box', position: [d.x0, d.y0, d.z0], size: [d.bw, d.bh, d.bd],
+      meta: { id: 'waste' },
+      style: {
+        default: (x, y, z) => {
+          const L = 0.86 + (y / H) * 0.05 + (((x + z) & 1) ? 0.008 : 0);
+          return { fill: `oklch(${L} 0.006 250)`, stroke: `oklch(${L * 0.5} 0.012 250)`, strokeWidth: 0.7 };
+        },
+      },
+    });
+    for (const [x, y, z] of TRUE_CELLS) {
+      const inside = x >= d.x0 && x < d.x0 + d.bw && y >= d.y0 && y < d.y0 + d.bh && z >= d.z0 && z < d.z0 + d.bd;
+      if (inside) continue; // captured cells stay buried in the block — that's the point
+      h.applyGeometry({
+        type: 'box', position: [x, y, z], size: 1, opaque: false, meta: { id: 'missTrue' },
+        style: {
+          default: { fill: 'rgba(217,38,66,0.55)', stroke: '#d92642', strokeWidth: 0.9 },
+          top: { fill: 'rgba(217,38,66,0.65)', hatch: { angle: 45, period: 4, stroke: '#a91c34', strokeWidth: 0.45 } },
+        },
+      });
+    }
+    this.host.innerHTML = h.toSVG({ padding: 46 });
+    this.svg = this.host.querySelector('svg');
+  }
+
+  playCuts() {
+    this.cuts = { x: 0, y: 0, z: 0 };
+    const SEQ = ['x', 'y', 'z'], DUR = 920, GAP = 430, FADE = 430;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const el = now - t0;
+      let live = false;
+      SEQ.forEach((ax, i) => {
+        const s = 260 + i * (DUR + GAP);
+        const t = clamp((el - s) / DUR, 0, 1);
+        this.cuts[ax] = easeIO(t);
+        const fade = clamp((el - s - DUR) / FADE, 0, 1);
+        this.heat[ax] = t <= 0 ? 0 : t < 1 ? 1 : 1 - easeOut(fade);
+        Deck.chipProgress(ax, t);
+        if (el < s + DUR + FADE) live = true;
+      });
+      this.rebuild();
+      if (live && this.stage === 'a2') this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  onMove(e) {
+    if (!this.svg) return;
+    const pt = this.svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const ctm = this.svg.getScreenCTM();
+    if (!ctm) return;
+    const { x, y } = pt.matrixTransform(ctm.inverse());
+    const hit = this.h.findByPosition([x, y]);
+    if (!hit) { Card.hide(); return; }
+    const sr = stageEl.getBoundingClientRect();
+    const px = e.clientX - sr.left, py = e.clientY - sr.top;
+    const id = hit.voxel.meta?.id;
+    if (id === 'lost') Card.show('lost', px, py);
+    else if (id === 'ghost') Card.show('ghost', px, py);
+    else if (id === 'missTrue') Card.show('missTrue', px, py);
+    else if (id === 'waste') Card.show('waste', px, py);
+    else if (this.stage === 'a3') Card.show('cohort', px, py);
+    else Card.show('pool', px, py);
+  }
+}
+
+/* ════════════════════════════════════════════════════════════════
+   STATE B — “The Scan” (same Heerich voxel engine, additive physics)
+   The same block. Scan planes read it; consensus cells light up inside
+   it; the lit shape lifts out. Nothing is ever deleted.
+   ════════════════════════════════════════════════════════════════ */
+const ROLE_CARD = { core: 'consensus', flare: 'flare42', satellite: 'satellite', outlier: 'outlier' };
+const edgeCells = (lo, hi) => (x, y, z) => {
+  const e = (v, a, b) => (v === a || v === b ? 1 : 0);
+  return e(x, lo[0], hi[0]) + e(y, lo[1], hi[1]) + e(z, lo[2], hi[2]) >= 2;
+};
+const CAGE_TEST = edgeCells([0, 0, 0], [W - 1, H - 1, D - 1]);
+const OPT_S = (() => {
+  let best = 0, bc = Infinity;
+  for (let i = 0; i <= 80; i++) { const c = blockStats(i / 80).cost; if (c < bc) { bc = c; best = i / 80; } }
+  return best;
+})();
+const SHAPE_BB = (() => {
+  const lo = [99, 99, 99], hi = [-1, -1, -1];
+  for (const c of TRUE_CELLS) for (let k = 0; k < 3; k++) {
+    lo[k] = Math.min(lo[k], c[k]); hi[k] = Math.max(hi[k], c[k]);
+  }
+  return { lo, hi };
+})();
+const PARTIALS = (() => {
+  const R = mulberry32(777), out = [];
+  while (out.length < 26) {
+    const x = Math.floor(R() * W), y = Math.floor(R() * H), z = Math.floor(R() * D);
+    if (TRUE_SET.has(`${x},${y},${z}`) || CAGE_TEST(x, y, z)) continue;
+    if (out.some((q) => q[0] === x && q[1] === y && q[2] === z)) continue;
+    out.push([x, y, z]);
+  }
+  return out;
+})();
+
+class ScanView {
+  constructor(host) {
+    this.host = host;
+    this.h = new Heerich({ camera: { type: 'isometric' }, gap: 0.07 });
+    this.stage = 'b1';
+    this.raf = null;
+    this.state = { plane: null, lit: 0, partialA: 0, redBox: false, lift: 0 };
+    this.review = {}; // role -> true (accepted) / false (rejected)
+    host.addEventListener('pointermove', (e) => this.onMove(e));
+    host.addEventListener('pointerleave', () => Card.hide());
+  }
+
+  rebuild() {
+    const h = this.h; h.clear();
+    const st = this.state;
+    const off = -Math.round(st.lift * 9);
+    const liftSet = off > 0
+      ? new Set(TRUE_CELLS.map(([x, y, z]) => `${x},${y + off},${z}`))
+      : TRUE_SET;
+
+    // glass case: delicate frame along the block's 12 edges — the block, intact
+    h.applyGeometry({
+      type: 'fill', bounds: [[0, 0, 0], [W, H, D]],
+      test: (x, y, z) => CAGE_TEST(x, y, z) && !liftSet.has(`${x},${y},${z}`),
+      opaque: false, meta: { id: 'cage' },
+      style: { default: { fill: 'rgba(28,34,48,0.025)', stroke: 'rgba(28,34,48,0.20)', strokeWidth: 0.5 } },
+    });
+
+    // lit consensus cells, revealed in story order: core → flare → satellites → edge cases
+    const n = Math.round(st.lit * TRUE_CELLS.length);
+    for (let i = 0; i < n; i++) {
+      const [cx, cy, cz] = TRUE_CELLS[i];
+      const role = TRUE_ROLES[i];
+      const cons = role === 'core' ? 3 : 2;
+      const verdict = this.review[role];
+      let fill = cons === 3 ? 'rgba(13,126,143,0.92)' : 'rgba(13,126,143,0.66)';
+      let stroke = '#0a5f6d', dash;
+      if (verdict === true) { fill = 'rgba(11,142,160,1)'; stroke = '#06434d'; }
+      if (verdict === false) { fill = 'rgba(13,126,143,0.18)'; stroke = 'rgba(10,95,109,0.5)'; dash = '2 2'; }
+      const style = {
+        default: { fill, stroke, strokeWidth: 0.8, strokeDasharray: dash },
+        top: { fill, hatch: { angle: 45, period: 3.6, stroke: verdict === false ? 'rgba(244,241,233,0.4)' : '#f4f1e9', strokeWidth: 0.5 } },
+      };
+      if (cons >= 3) style.left = { fill, hatch: { angle: 135, period: 3.6, stroke: '#f4f1e9', strokeWidth: 0.5 } };
+      h.applyGeometry({ type: 'box', position: [cx, cy + off, cz], size: 1, meta: { id: ROLE_CARD[role] }, style });
+    }
+
+    // single-view shimmer — flagged by one representation, never stabilises
+    if (st.partialA > 0.03) {
+      const a1 = (0.15 * st.partialA).toFixed(3), a2 = (0.45 * st.partialA).toFixed(3);
+      for (const q of PARTIALS) {
+        h.applyGeometry({
+          type: 'box', position: q, size: 1, opaque: false, meta: { id: 'partial' },
+          style: { default: { fill: `rgba(13,126,143,${a1})`, stroke: `rgba(13,126,143,${a2})`, strokeWidth: 0.5, strokeDasharray: '2 2.5' } },
+        });
+      }
+    }
+
+    // scan plane mid-sweep: same geometry as a cut, but it reads and moves on
+    if (st.plane) {
+      const { ax, i, fill, stroke } = st.plane;
+      const lo = ax === 'x' ? [i, 0, 0] : ax === 'y' ? [0, i, 0] : [0, 0, i];
+      const sz = ax === 'x' ? [1, H, D] : ax === 'y' ? [W, 1, D] : [W, H, 1];
+      h.applyGeometry({
+        type: 'fill', bounds: [lo, [lo[0] + sz[0], lo[1] + sz[1], lo[2] + sz[2]]],
+        test: (x, y, z) => !CAGE_TEST(x, y, z), meta: { id: 'plane' },
+        style: { default: { fill, stroke, strokeWidth: 0.7 } },
+      });
+    }
+
+    // the optimal box from stage 04, overlaid as a red frame — what cutting would keep
+    if (st.redBox) {
+      const d = blockDims(OPT_S);
+      const lo = [d.x0, d.y0, d.z0], hi = [d.x0 + d.bw - 1, d.y0 + d.bh - 1, d.z0 + d.bd - 1];
+      const inEdge = edgeCells(lo, hi);
+      h.applyGeometry({
+        type: 'fill', bounds: [lo, [hi[0] + 1, hi[1] + 1, hi[2] + 1]],
+        test: (x, y, z) => inEdge(x, y, z) && !TRUE_SET.has(`${x},${y},${z}`) && !CAGE_TEST(x, y, z),
+        opaque: false, meta: { id: 'redbox' },
+        style: { default: { fill: 'rgba(217,38,66,0.022)', stroke: 'rgba(217,38,66,0.34)', strokeWidth: 0.55, strokeDasharray: '2.5 2.5' } },
+      });
+    }
+
+    this.host.innerHTML = h.toSVG({ padding: 46 });
+    this.svg = this.host.querySelector('svg');
+  }
+
+  setStage(id) {
+    this.stage = id;
+    cancelAnimationFrame(this.raf);
+    const st = this.state;
+    if (id === 'b1') {
+      Object.assign(st, { plane: null, lit: 0, partialA: 0, redBox: false, lift: 0 });
+      if (REDUCED) {
+        this.rebuild();
+        ['x', 'y', 'z'].forEach((ax) => Deck.chipProgress(ax, 1));
+      } else this.playScans();
+    } else if (id === 'b2') {
+      Object.assign(st, { plane: null, redBox: false, lift: 0 });
+      if (REDUCED) { st.lit = 1; st.partialA = 1; this.rebuild(); }
+      else this.playConsensus();
+    } else if (id === 'b3') {
+      Object.assign(st, { plane: null, lit: 1, partialA: 0, redBox: true, lift: 0 });
+      this.rebuild();
+    } else if (id === 'b4') {
+      Object.assign(st, { plane: null, lit: 1, partialA: 0, redBox: false });
+      if (REDUCED) { st.lift = 1; this.rebuild(); }
+      else this.playLift();
+    }
+  }
+
+  playScans() {
+    const st = this.state;
+    const AXES = [
+      { ax: 'x', n: W, fill: 'rgba(13,126,143,0.38)', stroke: '#0a5f6d' },
+      { ax: 'y', n: H, fill: 'rgba(169,106,8,0.38)', stroke: '#7a4c06' },
+      { ax: 'z', n: D, fill: 'rgba(156,39,184,0.34)', stroke: '#6e1b82' },
+    ];
+    const DUR = 1150, GAP = 360;
+    const t0 = performance.now();
+    const tick = (now) => {
+      const el = now - t0;
+      let live = false;
+      st.plane = null;
+      AXES.forEach((a, idx) => {
+        const s = 240 + idx * (DUR + GAP);
+        const t = clamp((el - s) / DUR, 0, 1);
+        Deck.chipProgress(a.ax, t);
+        if (t > 0 && t < 1) st.plane = { ax: a.ax, i: Math.min(a.n - 1, Math.floor(t * a.n)), fill: a.fill, stroke: a.stroke };
+        if (el < s + DUR) live = true;
+      });
+      this.rebuild();
+      if (live && this.stage === 'b1') this.raf = requestAnimationFrame(tick);
+      else if (this.stage === 'b1') { st.plane = null; this.rebuild(); }
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  playConsensus() {
+    const st = this.state;
+    st.lit = 0; st.partialA = 0;
+    const t0 = performance.now(), DUR = 2300;
+    let last = 0;
+    const tick = (now) => {
+      const t = clamp((now - t0) / DUR, 0, 1);
+      if (now - last > 70 || t >= 1) {
+        last = now;
+        st.lit = easeOut(t);
+        st.partialA = Math.min(1, t * 1.4);
+        this.rebuild();
+      }
+      if (t < 1 && this.stage === 'b2') this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  playLift() {
+    const st = this.state;
+    st.lift = 0;
+    const t0 = performance.now(), DUR = 1200;
+    let last = 0;
+    const tick = (now) => {
+      const t = clamp((now - t0) / DUR, 0, 1);
+      if (now - last > 55 || t >= 1) { last = now; st.lift = easeIO(t); this.rebuild(); }
+      if (t < 1 && this.stage === 'b4') this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  setReview(role, accepted) {
+    this.review[role] = accepted;
+    if (this.stage === 'b4') this.rebuild();
+  }
+
+  onMove(e) {
+    if (!this.svg) return;
+    const pt = this.svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const ctm = this.svg.getScreenCTM();
+    if (!ctm) return;
+    const { x, y } = pt.matrixTransform(ctm.inverse());
+    const hit = this.h.findByPosition([x, y]);
+    const sr = stageEl.getBoundingClientRect();
+    if (hit && CARDS[hit.voxel.meta?.id]) Card.show(hit.voxel.meta.id, e.clientX - sr.left, e.clientY - sr.top);
+    else Card.hide();
+  }
+}
+
+/* ═══════════════ A4: block-size slider + cost curve ═══════════════ */
+const Slider = {
+  s: 0.5, raf: null,
+  init() {
+    const range = $('#blockRange');
+    const N = this.N = 81;
+    const tots = this.tots = [], misses = [], hrs = [];
+    for (let i = 0; i < N; i++) {
+      const st = blockStats(i / (N - 1));
+      tots.push(st.cost); misses.push(st.missed * 1.5); hrs.push(st.hours);
+    }
+    const maxC = this.maxC = Math.max(...tots);
+    const px = (i) => (i / (N - 1)) * 300, py = (v) => 78 - (v / maxC) * 64;
+    const d = (arr) => arr.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${py(v).toFixed(1)}`).join(' ');
+    $('#curveTotal').setAttribute('d', d(tots));
+    $('#curveMiss').setAttribute('d', d(misses));
+    $('#curveHrs').setAttribute('d', d(hrs));
+    let oi = 0; tots.forEach((v, i) => { if (v < tots[oi]) oi = i; });
+    $('#optLine').setAttribute('x1', px(oi)); $('#optLine').setAttribute('x2', px(oi));
+    $('#optNote').innerHTML = `Best case still ≈ <span class="text-bone">${hrs[oi]} hrs</span> review`;
+    range.addEventListener('input', () => this.set(range.value / 100));
+    this.set(0.5, true);
+  },
+  set(s, skipBox = false) {
+    this.s = s;
+    const st = blockStats(s);
+    $('#missVal').textContent = st.missed;
+    $('#hrsVal').textContent = st.hours;
+    const i = Math.round(s * (this.N - 1));
+    $('#curveDot').setAttribute('cx', (i / (this.N - 1)) * 300);
+    $('#curveDot').setAttribute('cy', 78 - (this.tots[i] / this.maxC) * 64);
+    if (!skipBox && Director.current === 'a4' && !this.raf) {
+      this.raf = requestAnimationFrame(() => { this.raf = null; Director.box.rebuildSlider(this.s); });
+    }
+  },
+};
+
+/* ═══════════════ B4: ranked shortlist + review feedback ═══════════════ */
+const SHORTLIST = [
+  { pid: 'PT-2841', fit: 97, src: 'Flare arm · comorbid 42', role: 'flare', col: 'var(--notes)' },
+  { pid: 'PT-0913', fit: 95, src: 'Satellite · relapse–remission', role: 'satellite', col: 'var(--meds)' },
+  { pid: 'PT-7406', fit: 93, src: 'Core consensus', role: 'core', col: 'var(--notes)' },
+  { pid: 'PT-1175', fit: 91, src: 'Edge case · multi-view', role: 'outlier', col: 'var(--labs)' },
+  { pid: 'PT-5520', fit: 88, src: 'Flare arm · comorbid 42', role: 'flare', col: 'var(--notes)' },
+];
+const Shortlist = {
+  reviewed: 0,
+  build() {
+    const host = $('#shortlistRows');
+    for (const r of SHORTLIST) {
+      const row = document.createElement('div');
+      row.className = 'sl-row border border-[rgba(28,34,48,.22)] bg-[rgba(255,255,253,.85)] px-3 py-2 flex items-center gap-3';
+      row.innerHTML = `
+        <div class="flex-1 min-w-0">
+          <div class="flex items-baseline justify-between gap-2">
+            <span class="text-[10.5px] tracking-[0.08em] text-bone">${r.pid}</span>
+            <span class="text-[10px] tabular-nums" style="color:${r.col}">fit ${r.fit}</span>
+          </div>
+          <div class="text-[8.5px] uppercase tracking-[0.14em] text-dim mt-0.5 truncate">${r.src}</div>
+        </div>
+        <div class="flex gap-1">
+          <button class="sl-acc w-6 h-6 border border-[rgba(28,34,48,.3)] text-[11px] leading-none" title="Accept">✓</button>
+          <button class="sl-rej w-6 h-6 border border-[rgba(28,34,48,.3)] text-[11px] leading-none text-dim" title="Reject">✕</button>
+        </div>`;
+      const decide = (accepted) => {
+        if (row.dataset.done) return;
+        row.dataset.done = '1';
+        row.classList.add(accepted ? 'acc' : 'rej');
+        this.reviewed++;
+        $('#approvedCount').textContent = `${this.reviewed} / ${SHORTLIST.length} reviewed`;
+        Director.scan.setReview(r.role, accepted);
+      };
+      row.querySelector('.sl-acc').addEventListener('click', () => decide(true));
+      row.querySelector('.sl-rej').addEventListener('click', () => decide(false));
+      host.appendChild(row);
+    }
+  },
+};
+
+/* ════════════════════════ deck / director ════════════════════════ */
+const ORDER = STAGES.map((s) => s.id);
+const Deck = {
+  chips: {},
+  build() {
+    const hostA = $('#dotsA'), hostB = $('#dotsB');
+    for (const s of STAGES) {
+      const b = document.createElement('button');
+      b.className = 'dot-btn flex flex-col items-center gap-1.5 text-dim';
+      b.innerHTML = `<span class="tick"></span><span class="text-[8.5px] uppercase tracking-[0.18em]">${s.label}</span>`;
+      b.dataset.id = s.id;
+      b.addEventListener('click', () => Director.goto(s.id));
+      (s.mode === 'box' ? hostA : hostB).appendChild(b);
+    }
+  },
+  setActive(id) {
+    const idx = ORDER.indexOf(id);
+    document.querySelectorAll('.dot-btn').forEach((b) => {
+      const bi = ORDER.indexOf(b.dataset.id);
+      b.classList.toggle('active', b.dataset.id === id);
+      b.classList.toggle('done', bi < idx);
+    });
+    $('#btnPrev').disabled = idx === 0;
+    $('#btnNext').disabled = idx === ORDER.length - 1;
+  },
+  buildChips(stage) {
+    const host = $('#railChips');
+    host.innerHTML = '';
+    this.chips = {};
+    this.scanMode = !!stage.scanChips;
+    if (!stage.chips) { host.classList.add('hidden'); host.classList.remove('flex'); return; }
+    host.classList.remove('hidden'); host.classList.add('flex');
+    for (const c of stage.chips) {
+      const el = document.createElement('div');
+      el.className = 'chip px-3 py-2 flex items-center justify-between text-[10.5px] uppercase tracking-[0.1em]' + (c.done ? ' done' : '');
+      el.innerHTML = `<span>${c.code}</span><span class="tabular-nums">${c.from} <span class="arrow">→</span> <span class="chip-to">${c.done ? c.to : '·····'}</span></span>`;
+      host.appendChild(el);
+      this.chips[c.ax] = { el, to: c.to };
+    }
+  },
+  chipProgress(ax, t) {
+    const c = this.chips[ax]; if (!c) return;
+    const cls = this.scanMode ? 'scanning' : 'cutting';
+    c.el.classList.toggle(cls, t > 0 && t < 1);
+    if (t >= 1) {
+      c.el.classList.remove(cls); c.el.classList.add('done');
+      c.el.querySelector('.chip-to').textContent = c.to;
+    } else if (t > 0) {
+      c.el.querySelector('.chip-to').textContent = '·····';
+    }
+  },
+};
+
+const Director = {
+  current: null,
+  init() {
+    Deck.build();
+    this.box = new BoxView($('#boxHost'));
+    this.scan = new ScanView($('#scanHost'));
+    Slider.init();
+    Shortlist.build();
+    $('#btnPrev').addEventListener('click', () => this.step(-1));
+    $('#btnNext').addEventListener('click', () => this.step(1));
+    $('#segAB').addEventListener('click', (e) => {
+      const side = e.target.dataset?.side;
+      if (!side) return;
+      const idx = ORDER.indexOf(this.current);
+      const within = idx % 4; // mirror position across sides
+      this.goto((side === 'a' ? ORDER.slice(0, 4) : ORDER.slice(4))[within]);
+    });
+    addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight') this.step(1);
+      if (e.key === 'ArrowLeft') this.step(-1);
+    });
+    addEventListener('hashchange', () => {
+      const id = location.hash.replace('#', '');
+      if (ORDER.includes(id) && id !== this.current) this.goto(id, true);
+    });
+    const initial = location.hash.replace('#', '');
+    this.goto(ORDER.includes(initial) ? initial : 'a1', true);
+  },
+  step(d) {
+    const i = clamp(ORDER.indexOf(this.current) + d, 0, ORDER.length - 1);
+    this.goto(ORDER[i]);
+  },
+  goto(id, instant = false) {
+    if (id === this.current) return;
+    this.current = id;
+    const stage = STAGES.find((s) => s.id === id);
+    history.replaceState(null, '', '#' + id);
+    Card.hide();
+
+    // rail
+    const replay = (el) => { el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; };
+    $('#railKicker').textContent = stage.kicker;
+    $('#railTitle').textContent = stage.title;
+    $('#railBody').textContent = stage.body;
+    $('#railTakeawayText').textContent = stage.takeaway;
+    $('#railTakeaway').className = `takeaway reveal d5 px-4 py-3 text-[11px] leading-relaxed ${stage.tone}`;
+    const m = $('#railMetrics');
+    m.innerHTML = stage.metrics.map(([k, v]) =>
+      `<div><div class="text-[8.5px] uppercase tracking-[0.2em] text-dim mb-0.5">${k}</div><div class="text-bone tabular-nums">${v}</div></div>`).join('');
+    m.style.display = stage.metrics.length ? '' : 'none';
+    Deck.buildChips(stage);
+    const sl = $('#railSlider');
+    sl.classList.toggle('hidden', !stage.slider);
+    sl.classList.toggle('flex', !!stage.slider);
+    const sh = $('#shortlist');
+    sh.classList.toggle('hidden', !stage.shortlist);
+    sh.classList.toggle('flex', !!stage.shortlist);
+    const hint = $('#railHint');
+    if (stage.hint) { hint.classList.remove('hidden'); $('#railHintText').textContent = stage.hint; }
+    else hint.classList.add('hidden');
+    document.querySelectorAll('#rail .reveal').forEach(replay);
+    $('#stageNum').textContent = stage.num;
+    Deck.setActive(id);
+    $('#segThumb').style.left = stage.mode === 'box' ? '3px' : 'calc(50%)';
+    document.querySelectorAll('.seg-opt').forEach((o) =>
+      o.style.color = o.dataset.side === (stage.mode === 'box' ? 'a' : 'b') ? 'var(--bone)' : 'var(--dim)');
+
+    // layers
+    const boxL = $('#boxLayer'), scanL = $('#scanLayer');
+    if (stage.mode === 'box') {
+      boxL.classList.remove('off'); scanL.classList.add('off');
+      this.box.setStage(id);
+    } else {
+      scanL.classList.remove('off'); boxL.classList.add('off');
+      this.scan.setStage(id);
+    }
+  },
+};
+
+Director.init();
+</script>
+</body>
+</html>
