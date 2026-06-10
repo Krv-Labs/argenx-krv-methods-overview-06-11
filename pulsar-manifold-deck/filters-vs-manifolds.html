@@ -1,0 +1,1533 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pulsar — Why Filters Fail, How Manifolds Learn</title>
+<!--
+  ────────────────────────────────────────────────────────────────────────
+  PULSAR — FILTERS vs. MANIFOLDS — companion briefing to index.html
+  Single-file, zero-build. All data is 100% synthetic demonstration data.
+  No PHI, no clinical telemetry, no biological content of any kind.
+
+  Rendering architecture:
+    ONE Heerich scene for all eight stages. The same 73-cell patient
+    cloud is viewed isometrically for Graphic One (the filter cube) and
+    tipped flat — a live camera move, pitch 35.264° → 90° — for Graphic
+    Two (the manifolds). Manifold boundaries are traced from the voxel
+    grid itself and injected through Heerich's prepend/append SVG hooks,
+    so they stay registered with the cells at any camera state.
+  ────────────────────────────────────────────────────────────────────────
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Azeret+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          display: ['"Instrument Serif"', 'Georgia', 'serif'],
+          mono: ['"Azeret Mono"', 'ui-monospace', 'monospace'],
+        },
+        colors: {
+          ink: '#ffffff',
+          bone: '#1f2434',
+          dim: '#7d7866',
+          steel: '#4d5a72',
+          alert: '#d92642',
+          notes: '#0d7e8f',
+          labs: '#a96a08',
+          meds: '#9c27b8',
+          cohort: '#2e7d4f',
+        },
+      },
+    },
+  };
+</script>
+<style>
+  :root {
+    --ink: #ffffff;
+    --bone: #1f2434;
+    --dim: #6d7480;
+    --steel: #4d5a72;
+    --alert: #d92642;
+    --notes: #0d7e8f;
+    --labs: #a96a08;
+    --meds: #9c27b8;
+    --cohort: #2e7d4f;
+    --hairline: rgba(28, 34, 48, 0.10);
+    --soft: #f7f8fa;
+  }
+  html, body { height: 100%; }
+  body {
+    background: var(--ink);
+    color: var(--bone);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  .hairline-b { border-bottom: 1px solid var(--hairline); }
+  .hairline-t { border-top: 1px solid var(--hairline); }
+  .hairline-r { border-right: 1px solid var(--hairline); }
+
+  /* ── narrative rail reveal ───────────────────────────── */
+  .reveal { opacity: 0; transform: translateY(14px); animation: rise 0.7s cubic-bezier(.22,1,.36,1) forwards; }
+  .reveal.d1 { animation-delay: .05s } .reveal.d2 { animation-delay: .14s }
+  .reveal.d3 { animation-delay: .24s } .reveal.d4 { animation-delay: .36s }
+  .reveal.d5 { animation-delay: .48s }
+  @keyframes rise { to { opacity: 1; transform: none } }
+
+  /* ── voxel host ──────────────────────────────────────── */
+  #cloudHost { animation: bob 9s ease-in-out infinite; }
+  @keyframes bob { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-9px) } }
+  #cloudHost svg { width: 100%; height: 100%; display: block; overflow: visible; }
+
+  /* ── executive data card ─────────────────────────────── */
+  #card {
+    position: absolute; z-index: 40; width: 290px; pointer-events: none;
+    background: rgba(255,255,255,.98);
+    border: 1px solid rgba(28,34,48,.16);
+    box-shadow: 0 16px 38px rgba(31,36,52,.10), 0 2px 8px rgba(31,36,52,.06);
+    opacity: 0; transform: translateY(8px) scale(.98);
+    transition: opacity .22s ease, transform .22s cubic-bezier(.22,1,.36,1);
+  }
+  #card.show { opacity: 1; transform: none; }
+  #card .accent { width: 3px; align-self: stretch; }
+
+  /* ── deck (controls) ─────────────────────────────────── */
+  .dot-btn { transition: color .25s, border-color .25s, background .25s; }
+  .dot-btn .tick { width: 6px; height: 6px; border-radius: 999px; border: 1px solid var(--dim); transition: all .25s; }
+  .dot-btn.active .tick { background: var(--bone); border-color: var(--bone); }
+  .dot-btn.active { color: var(--bone); }
+  .dot-btn.done .tick { border-color: var(--bone); }
+
+  .nav-btn { transition: all .2s; }
+  .nav-btn:hover:not(:disabled) { border-color: rgba(28,34,48,.42); color: var(--bone); background: var(--soft); }
+  .nav-btn:disabled { opacity: .3; cursor: default; }
+  .export-btn {
+    border: 1px solid rgba(28,34,48,.18);
+    color: var(--dim);
+    transition: color .2s, border-color .2s, background .2s;
+  }
+  .export-btn:hover {
+    border-color: rgba(28,34,48,.38);
+    color: var(--bone);
+    background: var(--soft);
+  }
+  .export-btn:disabled {
+    opacity: .45;
+    cursor: progress;
+  }
+
+  /* giant stage numeral */
+  #stageNum {
+    font-family: 'Instrument Serif', serif; font-style: italic;
+    font-size: clamp(64px, 10vw, 132px); line-height: .8;
+    color: transparent; -webkit-text-stroke: 1px rgba(28,34,48,.08);
+    user-select: none;
+  }
+
+  .kicker { letter-spacing: .22em; }
+  .takeaway { border-left: 2px solid; background: var(--soft); }
+  .takeaway.cold { border-color: rgba(217,38,66,.65); }
+  .takeaway.warm { border-color: rgba(13,126,143,.65); }
+
+  .hint-pulse { animation: hintpulse 2.4s ease-in-out infinite; }
+  @keyframes hintpulse { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+
+  /* range inputs */
+  input[type=range] { -webkit-appearance: none; appearance: none; height: 2px; background: rgba(28,34,48,.25); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 15px; height: 15px;
+    background: var(--ink); border: 1.5px solid var(--bone);
+    border-radius: 999px; cursor: ew-resize;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 15px; height: 15px; box-sizing: border-box;
+    background: var(--ink); border: 1.5px solid var(--bone);
+    border-radius: 999px; cursor: ew-resize;
+  }
+
+  /* g2e verdict toggle */
+  .v-opt { border: 1px solid rgba(28,34,48,.22); color: var(--dim); transition: all .25s; cursor: pointer; }
+  .v-opt.on { border-color: rgba(28,34,48,.6); color: var(--bone); background: var(--soft); }
+  .v-opt.on.warm { border-color: rgba(13,126,143,.7); color: var(--notes); }
+  .v-opt.on.cold { border-color: rgba(217,38,66,.6); color: var(--alert); }
+
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { animation-duration: .01s; animation-delay: 0s !important; }
+    #cloudHost { animation: none; }
+  }
+</style>
+</head>
+
+<body class="font-mono text-sm">
+<div id="app" class="h-full grid" style="grid-template-rows: 50px 1fr 74px;">
+
+  <!-- ═══════════ HEADER ═══════════ -->
+  <header class="hairline-b flex items-center justify-between px-6 relative z-30 bg-white">
+    <div class="font-display text-[25px] leading-none tracking-wide">P<span class="italic">u</span>lsar<span class="text-alert">.</span></div>
+    <div class="text-[10px] uppercase tracking-[0.22em] text-dim hidden md:block">Cohort geometry briefing</div>
+    <div class="flex items-center gap-3">
+      <button id="btnExportSvg" class="export-btn px-2.5 py-1.5 text-[8.5px] uppercase tracking-[0.16em]" type="button">Export SVG</button>
+      <button id="btnExportMotion" class="export-btn px-2.5 py-1.5 text-[8.5px] uppercase tracking-[0.16em]" type="button">Export Motion</button>
+      <div class="text-[9px] uppercase tracking-[0.18em] text-dim">filters <span class="text-alert">vs.</span> manifolds</div>
+    </div>
+  </header>
+
+  <!-- ═══════════ MAIN ═══════════ -->
+  <main class="grid min-h-0" style="grid-template-columns: minmax(300px, 360px) 1fr;">
+
+    <!-- narrative rail -->
+    <aside id="rail" class="hairline-r px-7 py-7 flex flex-col gap-4 overflow-y-auto relative z-20 bg-white">
+      <div id="railKicker" class="reveal d1 kicker text-[9px] uppercase text-dim"></div>
+      <h2 id="railTitle" class="reveal d2 font-display text-[29px] leading-[1.08] text-bone" style="text-wrap: balance;"></h2>
+      <p id="railBody" class="reveal d3 text-[12px] leading-relaxed text-steel/90"></p>
+
+      <div id="railMetrics" class="reveal d4 grid grid-cols-2 gap-x-4 gap-y-3 text-[10.5px]"></div>
+
+      <!-- g1c: filter-size control -->
+      <div id="railSlider" class="reveal d4 hidden flex-col gap-4">
+        <div>
+          <div class="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-dim mb-2">
+            <span>Tighter filter</span><span>Looser filter</span>
+          </div>
+          <input id="boxRange" type="range" min="0" max="100" value="42" aria-label="Filter size" class="w-full cursor-pointer" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="border border-[rgba(217,38,66,.3)] px-3 py-2.5">
+            <div class="text-[8.5px] uppercase tracking-[0.18em] text-alert/80 mb-1">Targets missed</div>
+            <div id="missVal" class="font-display text-[26px] leading-none text-alert tabular-nums">0</div>
+          </div>
+          <div class="border border-[rgba(169,106,8,.35)] px-3 py-2.5">
+            <div class="text-[8.5px] uppercase tracking-[0.18em] text-labs/90 mb-1">False positives</div>
+            <div id="fpVal" class="font-display text-[26px] leading-none text-labs tabular-nums">0</div>
+          </div>
+        </div>
+        <div>
+          <svg id="costCurve" viewBox="0 0 300 96" class="w-full" preserveAspectRatio="none" style="height:96px">
+            <line x1="0" y1="78" x2="300" y2="78" stroke="rgba(28,34,48,.22)" stroke-width="1"/>
+            <path id="curveMiss" fill="none" stroke="#d92642" stroke-width="1.4" opacity=".55"/>
+            <path id="curveFp"  fill="none" stroke="#a96a08" stroke-width="1.4" opacity=".55"/>
+            <path id="curveTotal" fill="none" stroke="#1f2434" stroke-width="1.8"/>
+            <line id="optLine" x1="0" y1="6" x2="0" y2="84" stroke="rgba(28,34,48,.35)" stroke-width="1" stroke-dasharray="3 3"/>
+            <circle id="curveDot" r="3.5" fill="#1f2434"/>
+          </svg>
+          <div class="text-[8.5px] uppercase tracking-[0.16em] text-dim mt-1">
+            <div>Total cost</div>
+            <div id="optNote" class="text-bone/70 mt-0.5"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- g2e: verdict toggle -->
+      <div id="railVerdict" class="reveal d4 hidden flex-col gap-4">
+        <div class="grid grid-cols-2 gap-2">
+          <button id="vManifold" class="v-opt warm px-3 py-2.5 text-[10px] uppercase tracking-[0.16em]">Manifold</button>
+          <button id="vFilter" class="v-opt cold px-3 py-2.5 text-[10px] uppercase tracking-[0.16em]">Filter</button>
+        </div>
+        <div id="vSliderWrap">
+          <div class="flex items-center justify-between text-[9px] uppercase tracking-[0.2em] text-dim mb-2">
+            <span>Tighter box</span><span>Looser box</span>
+          </div>
+          <input id="rectRange" type="range" min="0" max="100" value="50" aria-label="Box size" class="w-full cursor-pointer" />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div class="border border-[rgba(217,38,66,.3)] px-3 py-2.5">
+            <div class="text-[8.5px] uppercase tracking-[0.18em] text-alert/80 mb-1">Targets missed</div>
+            <div id="vMissVal" class="font-display text-[26px] leading-none text-alert tabular-nums">0</div>
+          </div>
+          <div class="border border-[rgba(169,106,8,.35)] px-3 py-2.5">
+            <div class="text-[8.5px] uppercase tracking-[0.18em] text-labs/90 mb-1">False positives</div>
+            <div id="vFpVal" class="font-display text-[26px] leading-none text-labs tabular-nums">0</div>
+          </div>
+        </div>
+        <div id="vNote" class="text-[9px] leading-relaxed text-dim uppercase tracking-[0.14em]"></div>
+      </div>
+
+      <div id="railTakeaway" class="takeaway reveal d5 px-4 py-3 text-[11px] leading-relaxed">
+        <div id="railTakeawayText" class="text-bone/90"></div>
+      </div>
+
+      <div id="railHint" class="text-[9px] uppercase tracking-[0.16em] text-dim mt-auto pt-4 hidden">
+        <span id="railHintText" class="hint-pulse inline-block"></span>
+      </div>
+    </aside>
+
+    <!-- stage -->
+    <section id="stage" class="relative min-w-0 overflow-hidden">
+      <div id="stageNum" class="absolute top-5 right-8 z-10">01</div>
+
+      <div class="absolute inset-0 flex items-center justify-center">
+        <div id="cloudHost" class="w-[min(76%,800px)] h-[86%]"></div>
+      </div>
+
+      <!-- executive data card -->
+      <div id="card" class="flex">
+        <div class="accent" id="cardAccent"></div>
+        <div class="px-4 py-3.5 flex-1">
+          <div class="text-[8.5px] uppercase tracking-[0.22em] text-dim mb-2">Cell detail</div>
+          <div id="cardTitle" class="font-display text-[19px] leading-tight text-bone mb-1.5"></div>
+          <p id="cardBody" class="text-[10.5px] leading-relaxed text-steel/90 mb-2"></p>
+          <div id="cardStat" class="text-[10px] uppercase tracking-[0.14em]"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ═══════════ CONTROL DECK ═══════════ -->
+  <footer class="hairline-t flex items-center justify-between px-6 relative z-30 bg-white">
+    <div class="flex items-center gap-5">
+      <div class="flex items-center gap-4" id="dotsA"></div>
+      <div class="w-px h-6 bg-[rgba(28,34,48,.14)]"></div>
+      <div class="flex items-center gap-4" id="dotsB"></div>
+    </div>
+    <div class="flex items-center gap-3">
+      <button id="btnPrev" class="nav-btn border border-[rgba(28,34,48,.22)] text-dim px-4 py-2 text-[10px] uppercase tracking-[0.18em]">Prev</button>
+      <button id="btnNext" class="nav-btn border border-[rgba(28,34,48,.34)] text-bone px-4 py-2 text-[10px] uppercase tracking-[0.18em]">Next</button>
+    </div>
+  </footer>
+</div>
+
+<script type="module">
+import { Heerich } from 'https://cdn.jsdelivr.net/npm/heerich@0.14.0/+esm';
+
+/* ════════════════════════ utils ════════════════════════ */
+const $ = (s) => document.querySelector(s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const easeIO = (t) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+const easeOut = (t) => 1 - Math.pow(1 - t, 3);
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches
+  || new URLSearchParams(location.search).has('nomotion');
+
+function mulberry32(seed) {
+  return function () {
+    seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/* ════════════════════ patient space ═════════════════════
+   73 synthetic records in a compact 14×6×14 similarity grid.
+   Frozen layout (validated offline — no collisions, no boundary kisses
+   between cohorts, no enclosed holes, exactly 2 connected target components):
+     T/c crescent 36 — the target band wrapping the decoy, 2 thick in the
+                       belly, 1 thick at the horns and at the straight-run
+                       weak link (11,9) whose removal splits it cleanly
+     T/s satellite 3 — targets pressed against the east wall, beside C
+     D   decoy     9 — look-alike cluster inside the crescent's mouth
+     B,C cohorts 9+8 — unrelated clusters at opposite corners
+     S   scatter  10 — background noise: two cells sit in the mouth, and
+                       the column (12,9..11) holds borderline candidates
+                       between the band and the satellite lobe — accepting
+                       them fuses the two lobes (the stage-07 beat)
+   Every record owns a unique (x,z) column so the flatten is collision-free.
+   Both scripted feedback sequences are state-audited offline: every
+   intermediate set is kiss-free and hole-free, lobes 2→3 (split) →2→1 (fuse). */
+const W = 14, H = 6, D = 14;
+const PATIENTS = [[7,1,2,"T","c"],[8,1,2,"T","c"],[8,1,3,"T","c"],[9,2,3,"T","c"],[9,1,4,"T","c"],[10,2,4,"T","c"],[10,1,5,"T","c"],[11,2,5,"T","c"],[11,2,6,"T","c"],[11,2,7,"T","c"],[11,2,8,"T","c"],[11,2,9,"T","c"],[10,1,10,"T","c"],[9,2,10,"T","c"],[9,1,11,"T","c"],[8,1,11,"T","c"],[7,1,11,"T","c"],[6,2,11,"T","c"],[5,1,11,"T","c"],[5,2,10,"T","c"],[4,1,10,"T","c"],[4,2,9,"T","c"],[3,1,9,"T","c"],[3,1,8,"T","c"],[3,1,7,"T","c"],[2,1,7,"T","c"],[2,1,6,"T","c"],[9,1,5,"T","c"],[10,1,6,"T","c"],[10,2,7,"T","c"],[10,1,8,"T","c"],[8,2,10,"T","c"],[7,2,10,"T","c"],[6,1,10,"T","c"],[5,1,9,"T","c"],[11,1,10,"T","c"],[13,1,9,"T","s"],[13,1,10,"T","s"],[13,1,11,"T","s"],[6,2,6,"D","d"],[6,2,7,"D","d"],[6,2,8,"D","d"],[7,3,6,"D","d"],[7,3,7,"D","d"],[7,3,8,"D","d"],[8,2,6,"D","d"],[8,2,7,"D","d"],[8,3,8,"D","d"],[1,3,10,"B","c"],[1,2,11,"B","c"],[2,3,11,"B","c"],[0,2,11,"B","c"],[0,3,12,"B","c"],[1,3,12,"B","c"],[2,2,12,"B","c"],[3,2,12,"B","c"],[2,3,13,"B","c"],[11,4,1,"C","c"],[12,4,1,"C","c"],[13,3,1,"C","c"],[11,4,2,"C","c"],[12,4,2,"C","c"],[13,4,2,"C","c"],[12,4,3,"C","c"],[13,4,3,"C","c"],[1,1,1,"S","s"],[5,4,4,"S","s"],[4,3,5,"S","s"],[0,4,8,"S","s"],[5,2,13,"S","s"],[9,2,13,"S","s"],[12,1,11,"S","s"],[13,3,5,"S","s"],[12,1,9,"S","s"],[12,2,10,"S","s"]]
+  .map(([x, y, z, co, role], i) => ({ x, y, z, co, role, pid: i }));
+const OCCUPIED = new Set(PATIENTS.map(p => `${p.x},${p.y},${p.z}`));
+
+const TARGETS = PATIENTS.filter(p => p.co === 'T');
+const N_T = TARGETS.length;                       // 39
+const N_ALL = PATIENTS.length;                    // 74
+const N_DECOY = PATIENTS.filter(p => p.co === 'D').length;
+const N_SCATTER = PATIENTS.filter(p => p.co === 'S').length;
+/* scripted feedback sequences (validated offline — every intermediate state
+   is kiss-free and hole-free):
+   REJECT: peel the band's inner edge facing the decoy, cell by cell, then
+           sever the straight-run weak link (11,9) → the manifold splits.
+   ACCEPT: restore the weak link (arcs re-fuse), then accept the borderline
+           column (12,9..11) between band and satellite lobe → lobes fuse. */
+const findP = (x, z) => PATIENTS.find(p => p.x === x && p.z === z);
+const REJECT_SEQ = [[10, 6], [10, 7], [10, 8], [11, 9]].map(([x, z]) => findP(x, z).pid);
+const ACCEPT_SEQ = [[11, 9], [12, 9], [12, 10], [12, 11]].map(([x, z]) => findP(x, z).pid);
+const CEN = TARGETS.reduce((a, p) => [a[0] + p.x + .5, a[1] + p.y + .5, a[2] + p.z + .5], [0, 0, 0]).map(v => v / N_T);
+
+/* reveal + light-up orders */
+const Rrev = mulberry32(99);
+const REVEAL_T = PATIENTS.map(() => 0).map(() => Rrev() * 0.8);
+const GREEN_T = (() => {
+  const t = new Array(N_ALL).fill(2);
+  const cres = TARGETS.filter(p => p.role === 'c').map(p => {
+    let th = Math.atan2(p.z + .5 - 7.5, p.x + .5 - 7.5) * 180 / Math.PI;
+    if (th < 0) th += 360;
+    return { pid: p.pid, o: (th - 265 + 360) % 360 };
+  }).sort((a, b) => a.o - b.o);
+  cres.forEach((c, i) => t[c.pid] = (i / cres.length) * 0.8);
+  TARGETS.filter(p => p.role === 's').forEach((p, i) => t[p.pid] = 0.85 + i * 0.04);
+  return t;
+})();
+const TINT_T = PATIENTS.map(() => Rrev() * 0.55);
+
+/* ═══════════════ filter geometry + sweep stats ═══════════════ */
+function boxDims(s) {
+  const bw = Math.round(lerp(3, W, s)), bh = Math.round(lerp(3, H, s)), bd = Math.round(lerp(3, D, s));
+  const x0 = clamp(Math.round(CEN[0]) - Math.floor(bw / 2), 0, W - bw);
+  const y0 = clamp(Math.round(CEN[1]) - Math.floor(bh / 2), 0, H - bh);
+  const z0 = clamp(Math.round(CEN[2]) - Math.floor(bd / 2), 0, D - bd);
+  return { x0, y0, z0, bw, bh, bd };
+}
+const inBox = (d) => (p) =>
+  p.x >= d.x0 && p.x < d.x0 + d.bw && p.y >= d.y0 && p.y < d.y0 + d.bh && p.z >= d.z0 && p.z < d.z0 + d.bd;
+function boxStats(s) {
+  const d = boxDims(s), inside = inBox(d);
+  let missed = 0, fp = 0;
+  for (const p of PATIENTS) {
+    if (p.co === 'T') { if (!inside(p)) missed++; }
+    else if (inside(p)) fp++;
+  }
+  return { ...d, missed, fp, cost: missed * 2 + fp };
+}
+function rectDims(s) {
+  const bw = Math.round(lerp(3, W, s)), bd = Math.round(lerp(3, D, s));
+  const x0 = clamp(Math.round(CEN[0]) - Math.floor(bw / 2), 0, W - bw);
+  const z0 = clamp(Math.round(CEN[2]) - Math.floor(bd / 2), 0, D - bd);
+  return { x0, z0, bw, bd };
+}
+function rectStats(s, isTarget) {
+  const d = rectDims(s);
+  const inside = (p) => p.x >= d.x0 && p.x < d.x0 + d.bw && p.z >= d.z0 && p.z < d.z0 + d.bd;
+  let missed = 0, fp = 0;
+  for (const p of PATIENTS) {
+    if (isTarget(p)) { if (!inside(p)) missed++; }
+    else if (inside(p)) fp++;
+  }
+  return { ...d, missed, fp };
+}
+
+/* ════════════════════════ copy ════════════════════════ */
+const STAGES = [
+  {
+    id: 'g1a', label: 'Space', num: '01', kicker: '01 / 08',
+    title: 'Every patient, somewhere in similarity space.',
+    body: `A synthetic EHR slice: ${N_ALL} records arranged by clinical similarity, not by table order. Dense regions are cohorts; the space between them is noise. Nothing has been labeled yet.`,
+    metrics: [['Patients', `${N_ALL}`], ['Clusters', '4'], ['Background records', `${N_SCATTER}`], ['Labels used', '0']],
+    takeaway: 'Cohorts are shapes in this space. Queries are boxes. That mismatch is the whole problem.',
+    tone: 'cold', hint: 'Hover the cells',
+  },
+  {
+    id: 'g1b', label: 'Targets', num: '02', kicker: '02 / 08',
+    title: 'The target cohort is a curve, not a cube.',
+    body: `The ${N_T} patients who belong in the trial light up: a crescent wrapping a look-alike cluster, plus three satellites beside an unrelated cohort. Coherent — and nothing like a box.`,
+    metrics: [['Target patients', `${N_T}`], ['Main band', `${N_T - 3}`], ['Satellites', '3'], ['Box-shaped', 'no']],
+    takeaway: 'The shape is the diagnosis: no axis-aligned query describes a crescent.',
+    tone: 'cold', hint: 'Hover the green cells',
+  },
+  {
+    id: 'g1c', label: 'Filter', num: '03', kicker: '03 / 08', slider: true,
+    title: 'No box fits a crescent.',
+    body: 'An eligibility filter is a box in this space: every face is a threshold on one variable. Tighten it and targets fall outside. Loosen it and the look-alike cluster floods in. The slider only chooses which failure.',
+    metrics: [],
+    takeaway: 'Threshold tuning trades one failure for the other. It cannot buy out of both.',
+    tone: 'cold', hint: 'Drag the slider',
+  },
+  {
+    id: 'g2a', label: 'Flatten', num: '04', kicker: '04 / 08',
+    title: 'Same space. New lens.',
+    body: 'Pulsar starts from the arrangement itself. The axis the box leaned on folds away and the similarity plane remains — every record exactly where it was, seen from where shape is legible.',
+    metrics: [['Patients', `${N_ALL}`], ['Records moved', '0'], ['Records removed', '0'], ['Dimensions', '3 → 2']],
+    takeaway: 'Nothing about the data changed. Only the way of looking.',
+    tone: 'warm',
+  },
+  {
+    id: 'g2b', label: 'Manifolds', num: '05', kicker: '05 / 08',
+    title: 'Boundaries with the shape of the evidence.',
+    body: 'Pulsar wraps each cohort in a learned manifold. The target manifold follows the crescent, holds its satellites, and excludes the look-alike cluster sitting in its mouth.',
+    metrics: [['Manifolds', '4'], ['Targets captured', `${N_T} / ${N_T}`], ['Targets missed', '0'], ['False positives', '0']],
+    takeaway: 'The crescent was never hard to describe. It was only hard to describe as a box.',
+    tone: 'warm', hint: 'Hover the wrapped cells',
+  },
+  {
+    id: 'g2c', label: 'Remove', num: '06', kicker: '06 / 08', live: true,
+    title: 'Reject patients — the boundary listens.',
+    body: 'A clinician works the borderline inner edge, rejecting record after record. Each decision peels the boundary back from the look-alikes — and at the thinnest point, the cohort splits where the evidence splits.',
+    metrics: [],
+    takeaway: 'Every rejection re-draws the shape. The boundary is never frozen.',
+    tone: 'warm', hint: 'Click a green cell to reject it',
+  },
+  {
+    id: 'g2d', label: 'Add', num: '07', kicker: '07 / 08', live: true,
+    title: 'Accept patients — the boundary reaches.',
+    body: 'Acceptances extend the manifold step by step: the split arcs re-fuse, then the borderline candidates between the band and its satellite lobe pull the two boundaries into one. Each decision teaches the mold what this cohort means.',
+    metrics: [],
+    takeaway: 'With enough evidence, separate lobes fuse: the manifold converges on the real cohort.',
+    tone: 'warm', hint: 'Click a grey cell to accept it',
+  },
+  {
+    id: 'g2e', label: 'Verdict', num: '08', kicker: '08 / 08', verdict: true,
+    title: 'Two languages. One verdict.',
+    body: 'Flip between the manifold and a box on the same flat data. One wraps the refined cohort exactly. The other never stops paying — in misses, in false positives, or in both.',
+    metrics: [],
+    takeaway: 'Filters approximate cohorts. Manifolds describe them.',
+    tone: 'warm', hint: 'Toggle, then drag',
+  },
+];
+
+const CARDS = {
+  pool:    { color: '#4d5a72', title: 'Unlabeled record', body: 'One patient, placed by clinical similarity. No label, no judgment yet.', stat: `1 of ${N_ALL} records` },
+  target:  { color: '#2e7d4f', title: 'Target patient', body: 'Belongs in the trial cohort. Part of the crescent-shaped band.', stat: `1 of ${N_T} targets` },
+  satellite:{ color: '#2e7d4f', title: 'Dispersed target', body: 'A target sitting beside an unrelated cohort, far from the main band.', stat: 'unreachable with one box' },
+  decoy:   { color: '#4d5a72', title: 'Look-alike cluster', body: 'Codes and labs resemble the targets. Sits inside the crescent’s mouth — exactly where a covering box must reach.', stat: `${N_DECOY} records · 0 targets` },
+  cluster: { color: '#4d5a72', title: 'Unrelated cohort', body: 'A different clinical population. A filter only stays clear of it while it stays small.', stat: 'not in scope' },
+  scatter: { color: '#7d7866', title: 'Background record', body: 'Unclustered noise. Some of it sits inside any box big enough to matter.', stat: 'unaffiliated' },
+  missed:  { color: '#d92642', title: 'Missed target', body: 'Inside the cohort, outside the box. Excluded before anyone could review it.', stat: 'lost to the filter' },
+  falsepos:{ color: '#a96a08', title: 'False positive', body: 'Matches the filter, not the cohort. Every one of these is chart-review burden.', stat: 'manual review cost' },
+  frame:   { color: '#4d5a72', title: 'Eligibility filter', body: 'Axis-aligned by construction: each face is a threshold on a single variable.', stat: 'the only shape a query can make' },
+  member:  { color: '#0d7e8f', title: 'Manifold member', body: 'Inside the learned boundary. Captured by shape, not by threshold.', stat: 'captured · 0 thresholds' },
+  removed: { color: '#d92642', title: 'Rejected record', body: 'Removed by clinician feedback. The boundary re-formed without it.', stat: 'feedback applied' },
+  added:   { color: '#0d7e8f', title: 'Accepted record', body: 'Pulled into the cohort by clinician feedback. The boundary reached out to hold it.', stat: 'boundary extended' },
+};
+
+/* ═══════════════════ executive card control ═══════════════════ */
+const cardEl = $('#card'), stageEl = $('#stage');
+let cardKey = null;
+const Card = {
+  show(key, px, py) {
+    const c = CARDS[key]; if (!c) return;
+    if (cardKey !== key) {
+      $('#cardTitle').textContent = c.title;
+      $('#cardBody').textContent = c.body;
+      $('#cardStat').textContent = c.stat;
+      $('#cardStat').style.color = c.color;
+      $('#cardAccent').style.background = c.color;
+      cardKey = key;
+    }
+    const r = stageEl.getBoundingClientRect();
+    cardEl.style.left = clamp(px + 22, 10, r.width - 300) + 'px';
+    cardEl.style.top = clamp(py - 30, 10, r.height - 190) + 'px';
+    cardEl.classList.add('show');
+  },
+  hide() { cardEl.classList.remove('show'); cardKey = null; },
+};
+
+/* ═══════════════ manifold boundaries (metaball field) ═══════════════
+   Each cohort boundary is the iso-contour of a smooth scalar field over the
+   plan: member cells add a bump (weight w → 1), every other occupied cell
+   adds a small repulsive dent (w → 0), so the boundary swells into empty
+   space, hugs occupied neighbours, and — because feedback tweens the
+   per-cell weights — morphs as a continuous liquid: rejects melt out
+   (pinch-off splits), accepts swell in (metaball fusion).
+   Parameters validated offline: resting lobe counts match the audited
+   dataset, the scripted sequences pinch 2→3 and fuse 2→1, and an isolated
+   cell reads as a bubble with ~0.41 padding. */
+const FIELD = { R: 1.35, RR: 1.05, LAMBDA: 0.55, TAU: 0.30, H: 0.25, PAD: 1.6 };
+const fieldK = (d, R) => { const q = (d * d) / (R * R); return q >= 1 ? 0 : (1 - q) * (1 - q); };
+
+function fieldContours(weightOf) {
+  const { R, RR, LAMBDA, TAU, H, PAD } = FIELD;
+  const x0 = -PAD, z0 = -PAD;
+  const n = Math.ceil((W + 2 * PAD) / H) + 1;
+  const f = new Float64Array(n * n);
+  const Rm = Math.max(R, RR);
+  for (const p of PATIENTS) {
+    const w = weightOf(p);
+    const a = w, b = LAMBDA * (1 - w);
+    if (a === 0 && b === 0) continue;
+    const cx = p.x + 0.5, cz = p.z + 0.5;
+    const i0 = Math.max(0, Math.floor((cx - Rm - x0) / H)), i1 = Math.min(n - 1, Math.ceil((cx + Rm - x0) / H));
+    const j0 = Math.max(0, Math.floor((cz - Rm - z0) / H)), j1 = Math.min(n - 1, Math.ceil((cz + Rm - z0) / H));
+    for (let j = j0; j <= j1; j++) {
+      const dz = z0 + j * H - cz;
+      for (let i = i0; i <= i1; i++) {
+        const dx = x0 + i * H - cx;
+        const d = Math.hypot(dx, dz);
+        f[j * n + i] += a * fieldK(d, R) - b * fieldK(d, RR);
+      }
+    }
+  }
+  /* marching squares with interpolated crossings, chained into loops */
+  const pts = new Map(), links = new Map();
+  const ek = (i, j, dir) => dir + ':' + i + ',' + j;
+  const cross = (va, vb) => (TAU - va) / (vb - va);
+  const addSeg = (a, b) => {
+    if (!links.has(a)) links.set(a, []);
+    if (!links.has(b)) links.set(b, []);
+    links.get(a).push(b); links.get(b).push(a);
+  };
+  for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
+    const v00 = f[j * n + i], v10 = f[j * n + i + 1], v01 = f[(j + 1) * n + i], v11 = f[(j + 1) * n + i + 1];
+    let c = 0;
+    if (v00 >= TAU) c |= 1; if (v10 >= TAU) c |= 2; if (v11 >= TAU) c |= 4; if (v01 >= TAU) c |= 8;
+    if (c === 0 || c === 15) continue;
+    const top = ek(i, j, 'h'), bot = ek(i, j + 1, 'h'), lef = ek(i, j, 'v'), rig = ek(i + 1, j, 'v');
+    if (!pts.has(top)) pts.set(top, [x0 + (i + cross(v00, v10)) * H, z0 + j * H]);
+    if (!pts.has(bot)) pts.set(bot, [x0 + (i + cross(v01, v11)) * H, z0 + (j + 1) * H]);
+    if (!pts.has(lef)) pts.set(lef, [x0 + i * H, z0 + (j + cross(v00, v01)) * H]);
+    if (!pts.has(rig)) pts.set(rig, [x0 + (i + 1) * H, z0 + (j + cross(v10, v11)) * H]);
+    switch (c) {
+      case 1: case 14: addSeg(top, lef); break;
+      case 2: case 13: addSeg(top, rig); break;
+      case 3: case 12: addSeg(lef, rig); break;
+      case 4: case 11: addSeg(rig, bot); break;
+      case 6: case 9: addSeg(top, bot); break;
+      case 7: case 8: addSeg(lef, bot); break;
+      case 5: case 10: {
+        const mid = (v00 + v10 + v01 + v11) / 4 >= TAU;
+        if ((c === 5) === mid) { addSeg(top, rig); addSeg(lef, bot); }
+        else { addSeg(top, lef); addSeg(rig, bot); }
+        break;
+      }
+    }
+  }
+  const loops = [], used = new Set();
+  for (const start of links.keys()) {
+    if (used.has(start)) continue;
+    const loop = [];
+    let cur = start, prev = null, guard = 0;
+    while (guard++ < 100000) {
+      used.add(cur);
+      loop.push(pts.get(cur));
+      const next = links.get(cur).find(k => k !== prev && !used.has(k));
+      if (next === undefined) break;
+      prev = cur; cur = next;
+    }
+    if (loop.length > 4) loops.push(loop);
+  }
+  /* one Chaikin pass to soften the grid micro-steps */
+  return loops.map(loop => {
+    const out = [];
+    for (let i = 0; i < loop.length; i++) {
+      const p = loop[i], q = loop[(i + 1) % loop.length];
+      out.push([p[0] * 0.75 + q[0] * 0.25, p[1] * 0.75 + q[1] * 0.25]);
+      out.push([p[0] * 0.25 + q[0] * 0.75, p[1] * 0.25 + q[1] * 0.75]);
+    }
+    return out;
+  });
+}
+
+/* ════════════════════════ cloud view ════════════════════════ */
+const ISO = { angle: 45, pitch: 35.264 };
+const FLAT = { angle: 0, pitch: 90 };
+const TILE = 10;
+const COHORT_TINT = {
+  D: { fill: 'oklch(0.80 0.012 250)', stroke: 'oklch(0.40 0.02 250)' },
+  B: { fill: 'oklch(0.83 0.030 250)', stroke: '#4d5a72' },
+  C: { fill: 'oklch(0.86 0.040 320)', stroke: '#7b3a8a' },
+  S: { fill: 'oklch(0.90 0.004 250)', stroke: 'oklch(0.55 0.008 250)' },
+};
+const BLOB_STYLE = {
+  T: { stroke: 'rgba(13,126,143,0.8)', fill: 'rgba(13,126,143,0.10)', w: 1.6 },
+  D: { stroke: 'rgba(77,90,114,0.45)', fill: 'rgba(77,90,114,0.05)', w: 1 },
+  B: { stroke: 'rgba(77,90,114,0.45)', fill: 'rgba(77,90,114,0.05)', w: 1 },
+  C: { stroke: 'rgba(123,58,138,0.40)', fill: 'rgba(156,39,184,0.04)', w: 1 },
+};
+
+class CloudView {
+  constructor(host) {
+    this.host = host;
+    this.h = new Heerich({ camera: { type: 'orthographic', ...ISO } });
+    this.cam = { ...ISO };
+    this.state = { reveal: 1, greens: 0, boxS: null, tint: 0, blobA: 0, rectS: null, vMode: 'manifold' };
+    this.removed = new Set();
+    this.added = new Set();
+    this.stage = 'g1a';
+    this.raf = null;
+    this.timers = [];
+    this.wgt = new Map(PATIENTS.map(p => [p.pid, p.co === 'T' ? 1 : 0])); // per-cell field weight
+    this.tweens = [];               // in-flight weight tweens
+    this.wraf = null;
+    this.blobCache = {};            // static cohort contours (plan space)
+    for (const co of ['D', 'B', 'C']) {
+      this.blobCache[co] = fieldContours(p => p.co === co ? 1 : 0);
+    }
+    this.refreshField();
+    host.addEventListener('pointermove', (e) => this.onMove(e));
+    host.addEventListener('pointerleave', () => Card.hide());
+    host.addEventListener('pointerdown', (e) => this.onClick(e));
+  }
+
+  isTargetNow(p) {
+    return (p.co === 'T' && !this.removed.has(p.pid)) || this.added.has(p.pid);
+  }
+  refreshField() {
+    this.tLoops = fieldContours(p => this.wgt.get(p.pid));
+    this.tLobes = this.tLoops.length;
+  }
+
+  /* plan (X,Z) → raw face pixel space at the FLAT camera */
+  proj([X, Z]) {
+    return [((X + 5) * TILE).toFixed(2), ((-Z + 5) * TILE).toFixed(2)];
+  }
+  loopsToPath(loops) {
+    return loops.map(loop =>
+      loop.map((p, i) => (i ? 'L' : 'M') + this.proj(p).join(' ')).join(' ') + ' Z').join(' ');
+  }
+
+  /* per-patient render style for the current stage/state */
+  styleFor(p) {
+    const st = this.state;
+    let card = p.co === 'T' ? 'pool' : p.co === 'D' ? 'decoy' : p.co === 'S' ? 'scatter' : 'cluster';
+    const L = 0.86 + (p.y / H) * 0.04;
+    let fill = `oklch(${L} 0.006 250)`, stroke = `oklch(${L * 0.5} 0.012 250)`, sw = 0.7, dash, hatch;
+    const green = () => {
+      fill = 'rgba(46,125,79,0.92)'; stroke = '#1d5635'; sw = 0.8;
+      hatch = { angle: 45, period: 3.6, stroke: '#eef2ec', strokeWidth: 0.5 };
+    };
+
+    if (st.greens > 0 && p.co === 'T' && st.greens > GREEN_T[p.pid]) {
+      green();
+      card = p.role === 's' ? 'satellite' : 'target';
+    }
+    if (st.tint > TINT_T[p.pid] && p.co !== 'T') {
+      const t = COHORT_TINT[p.co];
+      fill = t.fill; stroke = t.stroke;
+    }
+    if (st.blobA > 0.5 && this.isTargetNow(p) && !this.removed.size && !this.added.size && p.co === 'T') card = 'member';
+
+    /* 3D filter verdicts */
+    if (st.boxS != null) {
+      const inside = inBox(boxDims(st.boxS))(p);
+      if (p.co === 'T' && !inside) {
+        fill = 'rgba(217,38,66,0.55)'; stroke = '#d92642'; sw = 0.9; card = 'missed';
+        hatch = { angle: 45, period: 4, stroke: '#a91c34', strokeWidth: 0.45 };
+      } else if (p.co !== 'T' && inside) {
+        fill = 'rgba(169,106,8,0.34)'; stroke = '#a96a08'; sw = 0.9; card = 'falsepos';
+        hatch = { angle: 45, period: 4, stroke: '#a96a08', strokeWidth: 0.4 };
+      }
+    }
+    /* 2D rect verdicts (g2e filter mode) */
+    if (st.rectS != null && st.vMode === 'filter') {
+      const d = rectDims(st.rectS);
+      const inside = p.x >= d.x0 && p.x < d.x0 + d.bw && p.z >= d.z0 && p.z < d.z0 + d.bd;
+      if (this.isTargetNow(p)) {
+        if (!inside) {
+          fill = 'rgba(217,38,66,0.55)'; stroke = '#d92642'; sw = 0.9; card = 'missed';
+          hatch = { angle: 45, period: 4, stroke: '#a91c34', strokeWidth: 0.45 };
+        }
+      } else if (inside) {
+        fill = 'rgba(169,106,8,0.34)'; stroke = '#a96a08'; sw = 0.9; card = 'falsepos';
+        hatch = { angle: 45, period: 4, stroke: '#a96a08', strokeWidth: 0.4 };
+      }
+    }
+    /* feedback verdicts override */
+    if (this.removed.has(p.pid)) {
+      fill = 'rgba(46,125,79,0.08)'; stroke = 'rgba(29,86,53,0.55)'; sw = 0.7; dash = '2 2'; hatch = null;
+      card = 'removed';
+    } else if (this.added.has(p.pid)) {
+      // reads as a full member — slightly lighter fill is the only tell;
+      // the hover card carries the provenance
+      fill = 'rgba(46,125,79,0.78)'; stroke = '#1d5635'; sw = 0.8; card = 'added';
+      hatch = { angle: 45, period: 3.6, stroke: '#eef2ec', strokeWidth: 0.5 };
+    }
+    return { fill, stroke, sw, dash, hatch, card };
+  }
+
+  rebuild() {
+    const h = this.h;
+    h.clear();
+    const st = this.state;
+
+    for (const p of PATIENTS) {
+      const pop = clamp((st.reveal - REVEAL_T[p.pid]) / 0.16, 0, 1);
+      if (pop <= 0.02) continue;
+      const k = easeOut(pop);
+      const sd = this.styleFor(p);
+      const style = { default: { fill: sd.fill, stroke: sd.stroke, strokeWidth: sd.sw, strokeDasharray: sd.dash } };
+      if (sd.hatch) style.top = { fill: sd.fill, hatch: sd.hatch };
+      const geo = {
+        type: 'box', position: [p.x, p.y, p.z], size: 1,
+        meta: { id: sd.card, pid: p.pid },
+        style,
+      };
+      // uniform full-size cubes once settled — adjacent cells fuse seamlessly
+      if (k < 0.999) { geo.scale = [k, k, k]; geo.scaleOrigin = [0.5, 0.5, 0.5]; }
+      h.applyGeometry(geo);
+    }
+
+    /* 3D filter: voxel wireframe on the box edges (skips occupied cells) */
+    let prepend = '';
+    if (st.boxS != null) {
+      const d = boxDims(st.boxS);
+      const lo = [d.x0, d.y0, d.z0], hi = [d.x0 + d.bw - 1, d.y0 + d.bh - 1, d.z0 + d.bd - 1];
+      const onEdge = (x, y, z) => {
+        const e = (v, a, b) => (v === a || v === b ? 1 : 0);
+        return e(x, lo[0], hi[0]) + e(y, lo[1], hi[1]) + e(z, lo[2], hi[2]) >= 2;
+      };
+      // dashed ghost lattice, fading lighter as the box grows (it covers more
+      // screen at the loose end; when tight it sits among dark cells and
+      // needs extra weight to stay visible)
+      const fa = lerp(0.48, 0.17, st.boxS);
+      const fw = lerp(0.95, 0.5, st.boxS);
+      h.applyGeometry({
+        type: 'fill', bounds: [lo, [hi[0] + 1, hi[1] + 1, hi[2] + 1]],
+        test: (x, y, z) => onEdge(x, y, z) && !OCCUPIED.has(`${x},${y},${z}`),
+        opaque: false, meta: { id: 'frame' },
+        // small per-geometry gap so the frame reads as a measurement lattice,
+        // distinct from the fused solid of the patient cells
+        gap: 0.1,
+        style: { default: { fill: 'rgba(77,90,114,0.015)', stroke: `rgba(77,90,114,${fa.toFixed(3)})`, strokeWidth: +fw.toFixed(2), strokeDasharray: '2 2.2' } },
+      });
+      prepend += this.glassSVG(d);
+    }
+
+    /* manifold blobs (flat camera only) — fills under the cells, strokes over */
+    let append = '';
+    if (st.blobA > 0.01 && this.cam.pitch > 89.5) {
+      prepend += this.blobsSVG('fill');
+      append += this.blobsSVG('stroke');
+    }
+
+    /* g2e rectangle */
+    if (st.rectS != null && st.vMode === 'filter') {
+      const d = rectDims(st.rectS);
+      const c = [[d.x0, d.z0], [d.x0 + d.bw, d.z0], [d.x0 + d.bw, d.z0 + d.bd], [d.x0, d.z0 + d.bd]]
+        .map(p => this.proj(p).join(' '));
+      append += `<path d="M${c.join(' L')} Z" fill="rgba(217,38,66,0.03)" stroke="#d92642" stroke-width="1.4" stroke-dasharray="4 3" opacity="0.8"/>`;
+    }
+
+    this.host.innerHTML = h.toSVG({ padding: 46, prepend, append });
+    this.svg = this.host.querySelector('svg');
+  }
+
+  glassSVG(d) {
+    /* projected silhouette of the filter volume — a faint glass body behind the cells */
+    const cs = [];
+    for (const X of [d.x0, d.x0 + d.bw]) for (const Y of [d.y0, d.y0 + d.bh]) for (const Z of [d.z0, d.z0 + d.bd]) {
+      const a = this.cam.angle * Math.PI / 180, p = this.cam.pitch * Math.PI / 180;
+      const x1 = X * Math.cos(a) - Z * Math.sin(a);
+      const y1 = Y * Math.cos(p) - (X * Math.sin(a) + Z * Math.cos(a)) * Math.sin(p);
+      cs.push([(x1 + 5) * TILE, (y1 + 5) * TILE]);
+    }
+    // convex hull (gift wrap, 8 points)
+    let h0 = cs[0];
+    for (const p of cs) if (p[1] < h0[1] || (p[1] === h0[1] && p[0] < h0[0])) h0 = p;
+    const hull = [h0];
+    for (let guard = 0; guard < 9; guard++) {
+      const cur = hull[hull.length - 1];
+      let cand = cs[0] === cur ? cs[1] : cs[0];
+      for (const p of cs) {
+        if (p === cur) continue;
+        const cross = (cand[0] - cur[0]) * (p[1] - cur[1]) - (cand[1] - cur[1]) * (p[0] - cur[0]);
+        if (cross < 0) cand = p;
+      }
+      if (cand === hull[0]) break;
+      hull.push(cand);
+    }
+    const s = this.state.boxS ?? 0;
+    return `<path d="M${hull.map(p => p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' L')} Z" fill="rgba(77,90,114,${(0.04 - 0.02 * s).toFixed(3)})" stroke="rgba(77,90,114,${(0.16 - 0.08 * s).toFixed(3)})" stroke-width="0.7" stroke-dasharray="4 3"/>`;
+  }
+
+  /* blob layer, split so boundaries never hide behind cells:
+     'fill' renders under the cubes (prepend), 'stroke' over them (append) */
+  blobsSVG(mode) {
+    const st = this.state;
+    const attr = (b) => mode === 'fill'
+      ? `fill="${b.fill}" stroke="none"`
+      : `fill="none" stroke="${b.stroke}" stroke-width="${b.w}" stroke-linejoin="round"`;
+    let out = `<g opacity="${st.blobA.toFixed(3)}">`;
+    for (const co of ['B', 'C', 'D']) {
+      const b = BLOB_STYLE[co];
+      out += `<path d="${this.loopsToPath(this.blobCache[co])}" fill-rule="evenodd" ${attr(b)}/>`;
+    }
+    const b = BLOB_STYLE.T;
+    out += `<path d="${this.loopsToPath(this.tLoops)}" fill-rule="evenodd" ${attr(b)}/>`;
+    return out + '</g>';
+  }
+
+  /* animate a feedback decision: tween the cell's field weight; the contour
+     is re-extracted from the blended field every frame, so the boundary
+     flows — necks thin and pinch off on rejects, lobes swell and fuse on
+     accepts. Concurrent tweens compose naturally. */
+  tweenWeight(pid, to) {
+    if (REDUCED) {
+      this.wgt.set(pid, to);
+      this.refreshField();
+      this.rebuild();
+      Live.update();
+      return;
+    }
+    this.tweens.push({ pid, from: this.wgt.get(pid), to, t0: performance.now() });
+    if (this.wraf) return;
+    const DUR = 480;
+    const tick = (now) => {
+      for (const tw of this.tweens) {
+        const t = clamp((now - tw.t0) / DUR, 0, 1);
+        this.wgt.set(tw.pid, lerp(tw.from, tw.to, easeIO(t)));
+        tw.done = t >= 1;
+      }
+      this.tweens = this.tweens.filter(tw => !tw.done);
+      this.refreshField();
+      this.rebuild();
+      Live.update(); // lobe count ticks live as necks pinch and lobes fuse
+      if (this.tweens.length) this.wraf = requestAnimationFrame(tick);
+      else this.wraf = null;
+    };
+    this.wraf = requestAnimationFrame(tick);
+  }
+  finishTweens() {
+    if (!this.tweens.length) return;
+    for (const tw of this.tweens) this.wgt.set(tw.pid, tw.to);
+    this.tweens = [];
+    cancelAnimationFrame(this.wraf);
+    this.wraf = null;
+    this.refreshField();
+  }
+
+  /* ── stage entry ─────────────────────────────────────── */
+  setStage(id) {
+    this.stage = id;
+    cancelAnimationFrame(this.raf);
+    this.finishTweens();
+    this.timers.forEach(clearTimeout);
+    this.timers = [];
+    const st = this.state;
+    const g2 = id.startsWith('g2');
+
+    st.boxS = id === 'g1c' ? Slider.s : null;
+    st.rectS = id === 'g2e' ? Verdict.s : null;
+    if (!g2) { st.tint = 0; st.blobA = 0; }
+    st.greens = id === 'g1a' ? 0 : (id === 'g1b' && !REDUCED) ? 0 : 1;
+
+    if (id === 'g1a') {
+      this.toCamera(ISO, () => { if (!REDUCED && st.reveal >= 1) { /* settled */ } });
+      if (REDUCED) { st.reveal = 1; this.rebuild(); }
+      else this.playReveal();
+    } else if (id === 'g1b') {
+      st.reveal = 1;
+      this.toCamera(ISO);
+      if (REDUCED) { st.greens = 1; this.rebuild(); }
+      else this.playGreens();
+    } else if (id === 'g1c') {
+      st.reveal = 1; st.greens = 1;
+      this.toCamera(ISO);
+      Slider.push();
+    } else if (id === 'g2a') {
+      st.reveal = 1; st.greens = 1; st.tint = 0; st.blobA = 0;
+      this.toCamera(FLAT);
+    } else if (id === 'g2b') {
+      st.reveal = 1; st.greens = 1;
+      this.toCamera(FLAT, () => REDUCED ? (st.tint = 1, st.blobA = 1, this.rebuild()) : this.playTint());
+    } else if (id === 'g2c' || id === 'g2d') {
+      st.reveal = 1; st.greens = 1; st.tint = 1; st.blobA = 1;
+      this.toCamera(FLAT, () => {
+        this.rebuild();
+        // play the feedback sequence: one decision at a time, the manifold
+        // re-forming after each. Guards re-check state at fire time so user
+        // clicks in between can't be undone by a stale timer.
+        const seq = id === 'g2c' ? REJECT_SEQ : ACCEPT_SEQ;
+        let t = REDUCED ? 60 : 900;
+        for (const pid of seq) {
+          const p = PATIENTS[pid];
+          const pending = () => (id === 'g2c'
+            ? !this.removed.has(pid)                                   // still in cohort → reject it
+            : (p.co === 'T' ? this.removed.has(pid) : !this.added.has(pid))); // restore / accept
+          if (!pending()) continue;
+          this.timers.push(setTimeout(() => { if (pending()) this.toggleCell(pid); }, t));
+          // slight overlap with the ~480ms weight tween keeps the boundary
+          // flowing continuously as the clinician works
+          t += REDUCED ? 50 : 750;
+        }
+      });
+    } else if (id === 'g2e') {
+      st.reveal = 1; st.greens = 1; st.tint = 1;
+      st.blobA = st.vMode === 'manifold' ? 1 : 0;
+      this.toCamera(FLAT);
+      Verdict.push();
+    }
+    Live.update();
+  }
+
+  toCamera(target, done) {
+    const from = { ...this.cam };
+    const same = Math.abs(from.pitch - target.pitch) < 0.1 && Math.abs(from.angle - target.angle) < 0.1;
+    if (same || REDUCED) {
+      this.cam = { ...target };
+      this.h.setCamera({ type: 'orthographic', ...target });
+      this.rebuild();
+      if (done) done();
+      return;
+    }
+    const t0 = performance.now(), DUR = 1400;
+    const tick = (now) => {
+      const t = easeIO(clamp((now - t0) / DUR, 0, 1));
+      this.cam = { angle: lerp(from.angle, target.angle, t), pitch: lerp(from.pitch, target.pitch, t) };
+      this.h.setCamera({ type: 'orthographic', ...this.cam });
+      this.rebuild();
+      if (t < 1) this.raf = requestAnimationFrame(tick);
+      else if (done) done();
+    };
+    cancelAnimationFrame(this.raf);
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  playReveal() {
+    const st = this.state;
+    st.reveal = 0;
+    const t0 = performance.now(), DUR = 1700;
+    let last = 0;
+    const tick = (now) => {
+      const t = clamp((now - t0) / DUR, 0, 1);
+      if (now - last > 50 || t >= 1) { last = now; st.reveal = t; this.rebuild(); }
+      if (t < 1 && this.stage === 'g1a') this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  playGreens() {
+    const st = this.state;
+    st.greens = 0;
+    const t0 = performance.now(), DUR = 2100;
+    let last = 0;
+    const tick = (now) => {
+      const t = clamp((now - t0) / DUR, 0, 1);
+      if (now - last > 60 || t >= 1) { last = now; st.greens = easeOut(t); this.rebuild(); }
+      if (t < 1 && this.stage === 'g1b') this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  playTint() {
+    const st = this.state;
+    st.tint = 0; st.blobA = 0;
+    const t0 = performance.now(), DUR = 1800;
+    let last = 0;
+    const tick = (now) => {
+      const t = clamp((now - t0) / DUR, 0, 1);
+      if (now - last > 60 || t >= 1) {
+        last = now;
+        st.tint = Math.min(1, t * 1.7);
+        st.blobA = clamp((t - 0.35) / 0.65, 0, 1);
+        this.rebuild();
+      }
+      if (t < 1 && this.stage === 'g2b') this.raf = requestAnimationFrame(tick);
+    };
+    this.raf = requestAnimationFrame(tick);
+  }
+
+  /* ── feedback ────────────────────────────────────────── */
+  toggleCell(pid) {
+    const p = PATIENTS[pid];
+    if (p.co === 'T') {
+      if (this.removed.has(pid)) this.removed.delete(pid);
+      else this.removed.add(pid);
+    } else if (p.co === 'D') {
+      return; // the decoy is the counter-example; keep it out of the cohort
+    } else {
+      if (this.added.has(pid)) this.added.delete(pid);
+      else this.added.add(pid);
+    }
+    this.tweenWeight(pid, this.isTargetNow(p) ? 1 : 0);
+    Live.update();
+  }
+
+  onClick(e) {
+    if (this.stage !== 'g2c' && this.stage !== 'g2d') return;
+    const hit = this.hitAt(e);
+    if (hit && hit.voxel.meta && hit.voxel.meta.pid !== undefined) this.toggleCell(hit.voxel.meta.pid);
+  }
+
+  hitAt(e) {
+    if (!this.svg) return null;
+    const pt = this.svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    const ctm = this.svg.getScreenCTM();
+    if (!ctm) return null;
+    const { x, y } = pt.matrixTransform(ctm.inverse());
+    return this.h.findByPosition([x, y]);
+  }
+
+  onMove(e) {
+    const hit = this.hitAt(e);
+    const sr = stageEl.getBoundingClientRect();
+    if (hit && CARDS[hit.voxel.meta?.id]) Card.show(hit.voxel.meta.id, e.clientX - sr.left, e.clientY - sr.top);
+    else Card.hide();
+  }
+}
+
+/* ═══════════════ g1c slider + cost curve ═══════════════ */
+const Slider = {
+  s: 0.42, raf: null,
+  init() {
+    const range = $('#boxRange');
+    const N = this.N = 81;
+    const tots = this.tots = [], misses = [], fps = [];
+    for (let i = 0; i < N; i++) {
+      const st = boxStats(i / (N - 1));
+      tots.push(st.cost); misses.push(st.missed * 2); fps.push(st.fp);
+    }
+    const maxC = this.maxC = Math.max(...tots);
+    const px = (i) => (i / (N - 1)) * 300, py = (v) => 78 - (v / maxC) * 64;
+    const d = (arr) => arr.map((v, i) => `${i ? 'L' : 'M'}${px(i).toFixed(1)} ${py(v).toFixed(1)}`).join(' ');
+    $('#curveTotal').setAttribute('d', d(tots));
+    $('#curveMiss').setAttribute('d', d(misses));
+    $('#curveFp').setAttribute('d', d(fps));
+    let oi = 0; tots.forEach((v, i) => { if (v < tots[oi]) oi = i; });
+    $('#optLine').setAttribute('x1', px(oi)); $('#optLine').setAttribute('x2', px(oi));
+    // the honest payoff: cost of zero on either axis
+    let zm = Infinity, zf = Infinity;
+    for (let i = 0; i < N; i++) {
+      const st = boxStats(i / (N - 1));
+      if (st.missed === 0) zm = Math.min(zm, st.fp);
+      if (st.fp === 0) zf = Math.min(zf, st.missed);
+    }
+    $('#optNote').innerHTML = `0 missed ⇒ <span class="text-labs">${zm} flagged</span> · 0 flagged ⇒ <span class="text-alert">${zf === Infinity ? N_T : zf} missed</span>`;
+    range.addEventListener('input', () => this.set(range.value / 100));
+    this.set(this.s, true);
+  },
+  push() { this.set(this.s, false, true); },
+  set(s, skipBox = false, force = false) {
+    this.s = s;
+    const st = boxStats(s);
+    $('#missVal').textContent = st.missed;
+    $('#fpVal').textContent = st.fp;
+    const i = Math.round(s * (this.N - 1));
+    $('#curveDot').setAttribute('cx', (i / (this.N - 1)) * 300);
+    $('#curveDot').setAttribute('cy', 78 - (this.tots[i] / this.maxC) * 64);
+    if ((!skipBox && Director.current === 'g1c' && !this.raf) || force) {
+      this.raf = requestAnimationFrame(() => {
+        this.raf = null;
+        Director.cloud.state.boxS = this.s;
+        Director.cloud.rebuild();
+      });
+    }
+  },
+};
+
+/* ═══════════════ g2e verdict toggle ═══════════════ */
+const Verdict = {
+  s: 0.5, raf: null,
+  init() {
+    $('#rectRange').addEventListener('input', () => this.set($('#rectRange').value / 100));
+    $('#vManifold').addEventListener('click', () => this.mode('manifold'));
+    $('#vFilter').addEventListener('click', () => this.mode('filter'));
+  },
+  mode(m) {
+    const cv = Director.cloud;
+    cv.state.vMode = m;
+    cv.state.blobA = m === 'manifold' ? 1 : 0;
+    cv.state.rectS = this.s;
+    $('#vManifold').classList.toggle('on', m === 'manifold');
+    $('#vFilter').classList.toggle('on', m === 'filter');
+    $('#vSliderWrap').style.opacity = m === 'filter' ? '1' : '.3';
+    $('#rectRange').disabled = m !== 'filter';
+    cv.rebuild();
+    Live.update();
+  },
+  push() { this.mode(Director.cloud.state.vMode); },
+  set(s) {
+    this.s = s;
+    Director.cloud.state.rectS = s;
+    Live.update();
+    if (Director.current === 'g2e' && !this.raf) {
+      this.raf = requestAnimationFrame(() => { this.raf = null; Director.cloud.rebuild(); });
+    }
+  },
+};
+
+/* ═══════════════ live rail metrics (g2c/g2d/g2e) ═══════════════ */
+const Live = {
+  update() {
+    const cv = Director.cloud;
+    if (!cv) return;
+    const id = Director.current;
+    if (id === 'g2c' || id === 'g2d') {
+      const size = N_T - cv.removed.size + cv.added.size;
+      const lobes = cv.tLobes;
+      const rows = [
+        ['Cohort size', `${size}`],
+        ['Manifold lobes', `${lobes}`],
+        ['Rejected', `${cv.removed.size}`],
+        ['Accepted', `${cv.added.size}`],
+      ];
+      $('#railMetrics').innerHTML = rows.map(([k, v]) =>
+        `<div><div class="text-[8.5px] uppercase tracking-[0.2em] text-dim mb-0.5">${k}</div><div class="text-bone tabular-nums">${v}</div></div>`).join('');
+      $('#railMetrics').style.display = '';
+    } else if (id === 'g2e') {
+      const isT = (p) => cv.isTargetNow(p);
+      const nT = N_T - cv.removed.size + cv.added.size;
+      if (cv.state.vMode === 'filter') {
+        const st = rectStats(Verdict.s, isT);
+        $('#vMissVal').textContent = st.missed;
+        $('#vFpVal').textContent = st.fp;
+        let bm = Infinity, bf = Infinity, bc = Infinity;
+        for (let i = 0; i <= 80; i++) {
+          const r = rectStats(i / 80, isT);
+          const c = r.missed * 2 + r.fp;
+          if (c < bc) { bc = c; bm = r.missed; bf = r.fp; }
+        }
+        $('#vNote').innerHTML = `Best box on this data: <span class="text-alert">${bm} missed</span> · <span class="text-labs">${bf} flagged</span>`;
+      } else {
+        $('#vMissVal').textContent = '0';
+        $('#vFpVal').textContent = '0';
+        $('#vNote').innerHTML = `Manifold holds <span class="text-bone">${nT} / ${nT}</span> of the refined cohort · 0 look-alikes`;
+      }
+    }
+  },
+};
+
+/* ═══════════════════════ SVG export ═══════════════════════ */
+const Exporter = {
+  init() {
+    $('#btnExportSvg').addEventListener('click', () => this.download());
+  },
+  paint(paint) {
+    if (!paint || paint === 'none') return { color: paint, alpha: 1 };
+    if (paint === 'transparent') return { color: 'none', alpha: 1 };
+
+    const rgba = paint.match(/^rgba?\(([^)]+)\)$/);
+    if (rgba) {
+      const [r, g, b, a = '1'] = rgba[1].split(',').map(v => v.trim());
+      return { color: `rgb(${r}, ${g}, ${b})`, alpha: Number(a) };
+    }
+
+    const oklch = paint.match(/^oklch\(([\d.]+)\s+[\d.]+\s+[\d.]+\)$/);
+    if (oklch) {
+      const v = Math.round(clamp(Number(oklch[1]), 0, 1) * 255);
+      return { color: `rgb(${v}, ${v}, ${v})`, alpha: 1 };
+    }
+
+    return { color: paint, alpha: 1 };
+  },
+  normalizePaint(el, attr) {
+    if (!el.hasAttribute(attr)) return;
+    const { color, alpha } = this.paint(el.getAttribute(attr));
+    el.setAttribute(attr, color);
+    if (alpha < 1) {
+      const opacityAttr = `${attr}-opacity`;
+      const current = Number(el.getAttribute(opacityAttr) || 1);
+      el.setAttribute(opacityAttr, String(current * alpha));
+    }
+  },
+  normalize(svg) {
+    for (const el of [svg, ...svg.querySelectorAll('*')]) {
+      this.normalizePaint(el, 'fill');
+      this.normalizePaint(el, 'stroke');
+    }
+  },
+  clone(source) {
+    const clone = source.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    clone.setAttribute('style', 'background:#ffffff;overflow:visible');
+
+    const viewBox = clone.getAttribute('viewBox');
+    if (viewBox) {
+      const [x, y, w, h] = viewBox.split(/\s+/).map(Number);
+      if ([x, y, w, h].every(Number.isFinite)) {
+        clone.setAttribute('width', String(w));
+        clone.setAttribute('height', String(h));
+        const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bg.setAttribute('x', String(x));
+        bg.setAttribute('y', String(y));
+        bg.setAttribute('width', String(w));
+        bg.setAttribute('height', String(h));
+        bg.setAttribute('fill', '#ffffff');
+        clone.insertBefore(bg, clone.firstChild);
+      }
+    }
+    this.normalize(clone);
+    return clone;
+  },
+  xml(source) {
+    return `<?xml version="1.0" encoding="UTF-8"?>\n${new XMLSerializer().serializeToString(this.clone(source))}\n`;
+  },
+  download() {
+    const source = Director.cloud?.svg || $('#cloudHost svg');
+    if (!source) return;
+
+    const xml = this.xml(source);
+    const blob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pulsar-${Director.current || 'stage'}-graphic.svg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+};
+
+/* ═══════════════════════ motion export ═══════════════════════ */
+const MotionExporter = {
+  FPS: 24,
+  DURATION: 4.4,
+  DECISION_GAP: 0.75,
+  DECISION_START: 0.5,
+  TWEEN: 0.48,
+  init() {
+    $('#btnExportMotion').addEventListener('click', () => this.download());
+  },
+  codec() {
+    if (!window.MediaRecorder) return null;
+    const candidates = [
+      { type: 'video/mp4;codecs="avc1.42E01E"', ext: 'mp4' },
+      { type: 'video/mp4;codecs="avc1.42001E"', ext: 'mp4' },
+      { type: 'video/mp4', ext: 'mp4' },
+      { type: 'video/webm;codecs=vp9', ext: 'webm' },
+      { type: 'video/webm;codecs=vp8', ext: 'webm' },
+      { type: 'video/webm', ext: 'webm' },
+    ];
+    return candidates.find(c => MediaRecorder.isTypeSupported(c.type)) || null;
+  },
+  sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  },
+  snapshot(cv) {
+    return {
+      stage: cv.stage,
+      cam: { ...cv.cam },
+      state: { ...cv.state },
+      removed: new Set(cv.removed),
+      added: new Set(cv.added),
+      wgt: new Map(cv.wgt),
+      tweens: [...cv.tweens],
+    };
+  },
+  restore(cv, snap) {
+    cv.timers.forEach(clearTimeout);
+    cv.timers = [];
+    cancelAnimationFrame(cv.raf);
+    cancelAnimationFrame(cv.wraf);
+    cv.stage = snap.stage;
+    cv.cam = { ...snap.cam };
+    cv.h.setCamera({ type: 'orthographic', ...snap.cam });
+    cv.state = { ...snap.state };
+    cv.removed = new Set(snap.removed);
+    cv.added = new Set(snap.added);
+    cv.wgt = new Map(snap.wgt);
+    cv.tweens = [...snap.tweens];
+    cv.wraf = null;
+    cv.refreshField();
+    cv.rebuild();
+    Live.update();
+  },
+  eventPlan(id, snap) {
+    const isAdd = id === 'g2d';
+    const baseRemoved = new Set(isAdd ? snap.removed : []);
+    const baseAdded = new Set(isAdd ? snap.added : []);
+    if (isAdd && !baseRemoved.size && !baseAdded.size) {
+      for (const pid of REJECT_SEQ) baseRemoved.add(pid);
+    }
+    const seq = isAdd ? ACCEPT_SEQ : REJECT_SEQ;
+    const events = seq.map((pid, i) => ({
+      pid,
+      t0: this.DECISION_START + i * this.DECISION_GAP,
+      add: isAdd,
+    }));
+    return { baseRemoved, baseAdded, events };
+  },
+  applyFrame(cv, plan, t) {
+    cv.stage = Director.current;
+    cv.cam = { ...FLAT };
+    cv.h.setCamera({ type: 'orthographic', ...FLAT });
+    cv.state = { reveal: 1, greens: 1, boxS: null, tint: 1, blobA: 1, rectS: null, vMode: 'manifold' };
+    cv.removed = new Set(plan.baseRemoved);
+    cv.added = new Set(plan.baseAdded);
+    cv.wgt = new Map(PATIENTS.map(p => [p.pid, (p.co === 'T' && !cv.removed.has(p.pid)) || cv.added.has(p.pid) ? 1 : 0]));
+    cv.tweens = [];
+
+    for (const event of plan.events) {
+      if (t < event.t0) continue;
+      const p = PATIENTS[event.pid];
+      const before = cv.wgt.get(event.pid);
+      let after = before;
+      if (event.add) {
+        if (p.co === 'T') cv.removed.delete(event.pid);
+        else cv.added.add(event.pid);
+        after = 1;
+      } else {
+        cv.removed.add(event.pid);
+        after = 0;
+      }
+
+      const u = clamp((t - event.t0) / this.TWEEN, 0, 1);
+      cv.wgt.set(event.pid, lerp(before, after, easeIO(u)));
+    }
+
+    cv.refreshField();
+    cv.rebuild();
+    Live.update();
+  },
+  canvasFor(source) {
+    const viewBox = source.getAttribute('viewBox');
+    const box = viewBox ? viewBox.split(/\s+/).map(Number) : [];
+    const rawW = Number.isFinite(box[2]) ? box[2] : source.getBoundingClientRect().width;
+    const rawH = Number.isFinite(box[3]) ? box[3] : source.getBoundingClientRect().height;
+    const scale = Math.min(4, 1920 / rawW, 1080 / rawH);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.round(rawW * scale / 2) * 2);
+    canvas.height = Math.max(2, Math.round(rawH * scale / 2) * 2);
+    return canvas;
+  },
+  async drawSvg(canvas, source) {
+    const xml = Exporter.xml(source);
+    const url = URL.createObjectURL(new Blob([xml], { type: 'image/svg+xml;charset=utf-8' }));
+    const img = new Image();
+    img.decoding = 'async';
+    try {
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = url;
+      });
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  },
+  downloadBlob(blob, ext, id) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `pulsar-${id}-motion.${ext}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
+  async download() {
+    const id = Director.current;
+    if (id !== 'g2c' && id !== 'g2d') {
+      alert('Motion export is currently available on stages 06 Remove and 07 Add.');
+      return;
+    }
+    const codec = this.codec();
+    if (!codec) {
+      alert('This browser cannot record MP4 or WebM from a canvas stream.');
+      return;
+    }
+
+    const button = $('#btnExportMotion');
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = 'Exporting';
+
+    const cv = Director.cloud;
+    const snap = this.snapshot(cv);
+    try {
+      const plan = this.eventPlan(id, snap);
+      this.applyFrame(cv, plan, 0);
+      const canvas = this.canvasFor(cv.svg);
+      const stream = canvas.captureStream(this.FPS);
+      const track = stream.getVideoTracks()[0];
+      const chunks = [];
+      const recorder = new MediaRecorder(stream, { mimeType: codec.type, videoBitsPerSecond: 6000000 });
+      recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+      const stopped = new Promise(resolve => { recorder.onstop = resolve; });
+      recorder.start();
+
+      const frames = Math.round(this.DURATION * this.FPS);
+      for (let frame = 0; frame <= frames; frame++) {
+        const t = frame / this.FPS;
+        this.applyFrame(cv, plan, t);
+        await this.drawSvg(canvas, cv.svg);
+        if (track.requestFrame) track.requestFrame();
+        await this.sleep(1000 / this.FPS);
+      }
+
+      recorder.stop();
+      await stopped;
+      track.stop();
+      this.downloadBlob(new Blob(chunks, { type: codec.type }), codec.ext, id);
+    } catch (err) {
+      console.error(err);
+      alert('Motion export failed. Check the browser console for details.');
+    } finally {
+      this.restore(cv, snap);
+      button.textContent = oldText;
+      button.disabled = false;
+    }
+  },
+};
+
+/* ════════════════════════ deck / director ════════════════════════ */
+const ORDER = STAGES.map((s) => s.id);
+const Deck = {
+  build() {
+    const hostA = $('#dotsA'), hostB = $('#dotsB');
+    for (const s of STAGES) {
+      const b = document.createElement('button');
+      b.className = 'dot-btn flex flex-col items-center gap-1.5 text-dim';
+      b.innerHTML = `<span class="tick"></span><span class="text-[8.5px] uppercase tracking-[0.18em]">${s.label}</span>`;
+      b.dataset.id = s.id;
+      b.addEventListener('click', () => Director.goto(s.id));
+      (s.id.startsWith('g1') ? hostA : hostB).appendChild(b);
+    }
+  },
+  setActive(id) {
+    const idx = ORDER.indexOf(id);
+    document.querySelectorAll('.dot-btn').forEach((b) => {
+      const bi = ORDER.indexOf(b.dataset.id);
+      b.classList.toggle('active', b.dataset.id === id);
+      b.classList.toggle('done', bi < idx);
+    });
+    $('#btnPrev').disabled = idx === 0;
+    $('#btnNext').disabled = idx === ORDER.length - 1;
+  },
+};
+
+const Director = {
+  current: null,
+  init() {
+    Deck.build();
+    this.cloud = new CloudView($('#cloudHost'));
+    Slider.init();
+    Verdict.init();
+    Exporter.init();
+    MotionExporter.init();
+    $('#btnPrev').addEventListener('click', () => this.step(-1));
+    $('#btnNext').addEventListener('click', () => this.step(1));
+    addEventListener('keydown', (e) => {
+      if (e.target && e.target.tagName === 'INPUT') return; // never fight the sliders
+      if (e.key === 'ArrowRight') this.step(1);
+      if (e.key === 'ArrowLeft') this.step(-1);
+    });
+    addEventListener('hashchange', () => {
+      const id = location.hash.replace('#', '');
+      if (ORDER.includes(id) && id !== this.current) this.goto(id);
+    });
+    const initial = location.hash.replace('#', '');
+    this.goto(ORDER.includes(initial) ? initial : 'g1a');
+  },
+  step(d) {
+    const i = clamp(ORDER.indexOf(this.current) + d, 0, ORDER.length - 1);
+    this.goto(ORDER[i]);
+  },
+  goto(id) {
+    if (id === this.current) return;
+    this.current = id;
+    const stage = STAGES.find((s) => s.id === id);
+    history.replaceState(null, '', '#' + id);
+    Card.hide();
+
+    const replay = (el) => { el.style.animation = 'none'; void el.offsetWidth; el.style.animation = ''; };
+    $('#railKicker').textContent = stage.kicker;
+    $('#railTitle').textContent = stage.title;
+    $('#railBody').textContent = stage.body;
+    $('#railTakeawayText').textContent = stage.takeaway;
+    $('#railTakeaway').className = `takeaway reveal d5 px-4 py-3 text-[11px] leading-relaxed ${stage.tone}`;
+    const m = $('#railMetrics');
+    m.innerHTML = stage.metrics.map(([k, v]) =>
+      `<div><div class="text-[8.5px] uppercase tracking-[0.2em] text-dim mb-0.5">${k}</div><div class="text-bone tabular-nums">${v}</div></div>`).join('');
+    m.style.display = (stage.metrics.length || stage.live) ? '' : 'none';
+    const sl = $('#railSlider');
+    sl.classList.toggle('hidden', !stage.slider);
+    sl.classList.toggle('flex', !!stage.slider);
+    const vd = $('#railVerdict');
+    vd.classList.toggle('hidden', !stage.verdict);
+    vd.classList.toggle('flex', !!stage.verdict);
+    const hint = $('#railHint');
+    if (stage.hint) { hint.classList.remove('hidden'); $('#railHintText').textContent = stage.hint; }
+    else hint.classList.add('hidden');
+    document.querySelectorAll('#rail .reveal').forEach(replay);
+    $('#stageNum').textContent = stage.num;
+    Deck.setActive(id);
+
+    this.cloud.setStage(id);
+  },
+};
+
+Director.init();
+</script>
+</body>
+</html>
