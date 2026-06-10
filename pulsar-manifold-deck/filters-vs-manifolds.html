@@ -1246,7 +1246,11 @@ const Exporter = {
 
 /* ═══════════════════════ motion export ═══════════════════════ */
 const MotionExporter = {
-  FPS: 24,
+  FPS: 60,
+  BITRATE: 24000000,
+  MAX_WIDTH: 3840,
+  MAX_HEIGHT: 2160,
+  MAX_SCALE: 8,
   DURATION: 4.4,
   DECISION_GAP: 0.75,
   DECISION_START: 0.5,
@@ -1298,7 +1302,13 @@ const MotionExporter = {
     cv.rebuild();
     Live.update();
   },
-  eventPlan(id, snap) {
+  plan(id, snap) {
+    if (id === 'g1c') return { type: 'filter', duration: 4.8 };
+    if (id === 'g2e') return { type: 'verdict', duration: 4.8, baseRemoved: new Set(snap.removed), baseAdded: new Set(snap.added) };
+    if (id === 'g2c' || id === 'g2d') return this.feedbackPlan(id, snap);
+    return null;
+  },
+  feedbackPlan(id, snap) {
     const isAdd = id === 'g2d';
     const baseRemoved = new Set(isAdd ? snap.removed : []);
     const baseAdded = new Set(isAdd ? snap.added : []);
@@ -1311,16 +1321,63 @@ const MotionExporter = {
       t0: this.DECISION_START + i * this.DECISION_GAP,
       add: isAdd,
     }));
-    return { baseRemoved, baseAdded, events };
+    return { type: 'feedback', duration: this.DURATION, baseRemoved, baseAdded, events };
   },
-  applyFrame(cv, plan, t) {
+  resetWeights(cv) {
+    cv.wgt = new Map(PATIENTS.map(p => [p.pid, (p.co === 'T' && !cv.removed.has(p.pid)) || cv.added.has(p.pid) ? 1 : 0]));
+  },
+  applyFilterFrame(cv, t, duration) {
+    const phase = t / duration;
+    let s = 0.42;
+    if (phase < 0.12) s = 0.42;
+    else if (phase < 0.42) s = lerp(0.42, 0.18, easeIO((phase - 0.12) / 0.30));
+    else if (phase < 0.78) s = lerp(0.18, 0.86, easeIO((phase - 0.42) / 0.36));
+    else s = lerp(0.86, 0.42, easeIO((phase - 0.78) / 0.22));
+
+    cv.stage = 'g1c';
+    cv.cam = { ...ISO };
+    cv.h.setCamera({ type: 'orthographic', ...ISO });
+    cv.state = { reveal: 1, greens: 1, boxS: s, tint: 0, blobA: 0, rectS: null, vMode: 'manifold' };
+    cv.removed = new Set();
+    cv.added = new Set();
+    this.resetWeights(cv);
+    cv.tweens = [];
+    cv.refreshField();
+    cv.rebuild();
+  },
+  applyVerdictFrame(cv, plan, t, duration) {
+    const phase = t / duration;
+    const filterU = clamp((phase - 0.22) / 0.66, 0, 1);
+    const s = lerp(0.20, 0.86, easeIO(filterU));
+    const inFilter = phase >= 0.22;
+
+    cv.stage = 'g2e';
+    cv.cam = { ...FLAT };
+    cv.h.setCamera({ type: 'orthographic', ...FLAT });
+    cv.state = {
+      reveal: 1,
+      greens: 1,
+      boxS: null,
+      tint: 1,
+      blobA: inFilter ? 1 - clamp((phase - 0.22) / 0.16, 0, 1) : 1,
+      rectS: inFilter ? s : null,
+      vMode: inFilter ? 'filter' : 'manifold',
+    };
+    cv.removed = new Set(plan.baseRemoved);
+    cv.added = new Set(plan.baseAdded);
+    this.resetWeights(cv);
+    cv.tweens = [];
+    cv.refreshField();
+    cv.rebuild();
+  },
+  applyFeedbackFrame(cv, plan, t) {
     cv.stage = Director.current;
     cv.cam = { ...FLAT };
     cv.h.setCamera({ type: 'orthographic', ...FLAT });
     cv.state = { reveal: 1, greens: 1, boxS: null, tint: 1, blobA: 1, rectS: null, vMode: 'manifold' };
     cv.removed = new Set(plan.baseRemoved);
     cv.added = new Set(plan.baseAdded);
-    cv.wgt = new Map(PATIENTS.map(p => [p.pid, (p.co === 'T' && !cv.removed.has(p.pid)) || cv.added.has(p.pid) ? 1 : 0]));
+    this.resetWeights(cv);
     cv.tweens = [];
 
     for (const event of plan.events) {
@@ -1345,12 +1402,17 @@ const MotionExporter = {
     cv.rebuild();
     Live.update();
   },
+  applyFrame(cv, plan, t) {
+    if (plan.type === 'filter') this.applyFilterFrame(cv, t, plan.duration);
+    else if (plan.type === 'verdict') this.applyVerdictFrame(cv, plan, t, plan.duration);
+    else this.applyFeedbackFrame(cv, plan, t);
+  },
   canvasFor(source) {
     const viewBox = source.getAttribute('viewBox');
     const box = viewBox ? viewBox.split(/\s+/).map(Number) : [];
     const rawW = Number.isFinite(box[2]) ? box[2] : source.getBoundingClientRect().width;
     const rawH = Number.isFinite(box[3]) ? box[3] : source.getBoundingClientRect().height;
-    const scale = Math.min(4, 1920 / rawW, 1080 / rawH);
+    const scale = Math.min(this.MAX_SCALE, this.MAX_WIDTH / rawW, this.MAX_HEIGHT / rawH);
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(2, Math.round(rawW * scale / 2) * 2);
     canvas.height = Math.max(2, Math.round(rawH * scale / 2) * 2);
@@ -1387,8 +1449,11 @@ const MotionExporter = {
   },
   async download() {
     const id = Director.current;
-    if (id !== 'g2c' && id !== 'g2d') {
-      alert('Motion export is currently available on stages 06 Remove and 07 Add.');
+    const cv = Director.cloud;
+    const snap = this.snapshot(cv);
+    const plan = this.plan(id, snap);
+    if (!plan) {
+      alert('Motion export is available on stages 03 Filter, 06 Remove, 07 Add, and 08 Verdict.');
       return;
     }
     const codec = this.codec();
@@ -1402,21 +1467,18 @@ const MotionExporter = {
     button.disabled = true;
     button.textContent = 'Exporting';
 
-    const cv = Director.cloud;
-    const snap = this.snapshot(cv);
     try {
-      const plan = this.eventPlan(id, snap);
       this.applyFrame(cv, plan, 0);
       const canvas = this.canvasFor(cv.svg);
       const stream = canvas.captureStream(this.FPS);
       const track = stream.getVideoTracks()[0];
       const chunks = [];
-      const recorder = new MediaRecorder(stream, { mimeType: codec.type, videoBitsPerSecond: 6000000 });
+      const recorder = new MediaRecorder(stream, { mimeType: codec.type, videoBitsPerSecond: this.BITRATE });
       recorder.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
       const stopped = new Promise(resolve => { recorder.onstop = resolve; });
       recorder.start();
 
-      const frames = Math.round(this.DURATION * this.FPS);
+      const frames = Math.round(plan.duration * this.FPS);
       for (let frame = 0; frame <= frames; frame++) {
         const t = frame / this.FPS;
         this.applyFrame(cv, plan, t);
