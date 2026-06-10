@@ -107,9 +107,54 @@ function demoCard(demo, large = false) {
   return button;
 }
 
+const BRIEFINGS = [
+  {
+    title: "Cohort Topology",
+    kicker: "Interactive Topology",
+    summary: "Traditional rigid database filtering vs. additive sweeps.",
+    url: "./legacy-htmls/index.html",
+    thumb: "thumb-scan",
+  },
+  {
+    title: "Filters vs. Manifolds",
+    kicker: "Companion Briefing",
+    summary: "2D comparison showing why hypercube box-filtering fails on curved distributions.",
+    url: "./legacy-htmls/filters-vs-manifolds.html",
+    thumb: "thumb-crescent",
+  }
+];
+
+function briefingCard(briefing, large = false) {
+  const link = document.createElement("a");
+  link.className = large ? "gallery-card" : "demo-card";
+  link.href = briefing.url;
+  link.target = "_blank";
+  link.style.textDecoration = "none";
+  if (large) {
+    link.innerHTML = `
+      <div class="gallery-card__copy">
+        <div>
+          <div class="gallery-card__kicker">${briefing.kicker}</div>
+          <h2 class="gallery-card__title">${briefing.title} ↗</h2>
+        </div>
+        <p class="gallery-card__body">${briefing.summary}</p>
+      </div>
+      <div class="gallery-card__thumb" aria-hidden="true"><div class="${briefing.thumb}"></div></div>`;
+  } else {
+    link.innerHTML = `
+      <div class="demo-card__kicker">${briefing.kicker}</div>
+      <h3 class="demo-card__title">${briefing.title} ↗</h3>
+      <p class="demo-card__body">${briefing.summary}</p>`;
+  }
+  return link;
+}
+
 function buildGallery() {
   refs.demoList.replaceChildren(...DEMOS.map((demo) => demoCard(demo)));
-  refs.galleryView.replaceChildren(...DEMOS.map((demo) => demoCard(demo, true)));
+  refs.galleryView.replaceChildren(
+    ...DEMOS.map((demo) => demoCard(demo, true)),
+    ...BRIEFINGS.map((b) => briefingCard(b, true))
+  );
 }
 
 async function selectDemo(id) {
