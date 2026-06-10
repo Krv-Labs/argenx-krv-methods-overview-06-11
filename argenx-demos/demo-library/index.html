@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pulsar Demo Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Azeret+Mono:wght@300;400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="./styles/demo-gallery.css" />
+</head>
+<body>
+<div class="app-shell">
+  <header class="topbar">
+    <a class="brand" href="#gallery" aria-label="Pulsar demo gallery">
+      P<span>u</span>lsar<strong>.</strong>
+    </a>
+    <div class="topbar__meta">
+      <span id="modeLabel">Demo gallery</span>
+      <span id="stepLabel">Choose a graphic</span>
+    </div>
+    <div class="topbar__actions" aria-label="Export controls">
+      <button id="btnGallery" class="tool-button" type="button" title="Back to gallery">
+        <span class="tool-button__icon" aria-hidden="true">G</span>
+        <span>Gallery</span>
+      </button>
+      <button id="btnSvg" class="tool-button" type="button" title="Download SVG screenshot">
+        <span class="tool-button__icon" aria-hidden="true">S</span>
+        <span>SVG</span>
+      </button>
+      <button id="btnRecord" class="tool-button tool-button--strong" type="button" title="Record this graphic">
+        <span class="tool-button__icon" aria-hidden="true">R</span>
+        <span>Record</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <aside class="gallery-rail" aria-label="Demo gallery">
+      <div class="rail-heading">
+        <div class="eyebrow">Graphics</div>
+        <h1>Demo gallery</h1>
+      </div>
+      <div id="demoList" class="demo-list"></div>
+    </aside>
+
+    <section class="viewer" aria-label="Selected demo">
+      <div id="galleryView" class="gallery-view"></div>
+
+      <div id="demoView" class="demo-view" hidden>
+        <aside class="narrative-panel">
+          <div id="demoKicker" class="eyebrow">Select a demo</div>
+          <h2 id="demoTitle">Pulsar graphics gallery</h2>
+          <p id="demoBody">Choose a graphic from the gallery, then step it, tune it, export an SVG, or record a short motion clip.</p>
+          <div id="demoMetrics" class="metric-grid"></div>
+          <div id="demoControls" class="control-stack"></div>
+        </aside>
+
+        <div class="stage-wrap">
+          <div id="stageHost" class="stage-host"></div>
+          <div class="stage-toolbar" aria-label="Playback controls">
+            <button id="btnPrev" class="nav-button" type="button">Prev</button>
+            <button id="btnPlay" class="nav-button nav-button--primary" type="button">Play</button>
+            <button id="btnNext" class="nav-button" type="button">Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script type="module" src="./scripts/main.js"></script>
+</body>
+</html>
