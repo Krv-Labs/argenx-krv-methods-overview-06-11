@@ -1,65 +1,76 @@
-# Whittling Animation — Argenx Pitch (Motion Canvas Edition)
+# Pulsar Demo Gallery & Briefings
 
-This is an industry-standard, fully modular **Motion Canvas** project that explains why clinical trial candidate discovery using traditional threshold filters fails, and how Pulsar's shape-based, feedback-driven approach improves precision.
+This repository contains the interactive graphics and cohort discovery briefings for Pulsar. It features the **Pulsar Demo Gallery** running natively at the root, along with self-contained, legacy executive slide briefings.
 
-The animation delivers a single key concept:
-- **Competitor approach** = rigid rectangular filter (hypercube) that cuts off valid candidates and includes massive false-positive review noise.
-- **Pulsar approach** = adaptive, conforming spline/manifold that perfectly encloses the candidate shape and improves continuously with clinician feedback.
+The project is built using vanilla static files compiled with **Vite** for ultra-fast load times, lightweight bundle sizes, and seamless deployment to GitHub Pages.
 
 ---
 
-## 🚀 Features & Enhancements
+## 🚀 Pulsar Demo Gallery (Active Web Application)
 
-- **Modern 2D Vectors**: Replaced legacy 3D procedural shapes with a pristine 2D scatter-plot of 150 patients in UMAP space, perfectly representing real clinical trial data.
-- **Unified Narrative Flow**: Seamlessly animated caption cards, stat widgets (Candidate count, Review noise, Clinician hours), and conforming spline morphing.
-- **AI-Agent Integration**: Configured with **LeanCTX** and **Agent Skills Manager (asm)** for context-compressed execution and skill auditing.
-- **Double-Green Mandate**: Pre-configured strict ESLint flat rules and strict TypeScript compilation checks to guarantee 100% type safety.
+The active gallery showcases several interactive graphics explaining Pulsar's additive approach to cohort discovery vs. traditional threshold filtering.
+
+### Running Locally
+
+To start the local Vite development server:
+
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+2. **Start the server**:
+   ```bash
+   npm start
+   ```
+3. Open the address reported by Vite (usually `http://localhost:5173`) in your browser (optimized for Chrome).
+
+### Features in the Gallery
+
+- **Cube growth and shrink (Rigid filters)**: Slider showing the compromise of hypercube box-filtering (missing candidates vs. high manual review burden).
+- **Non-destructive scans (Pulsar scan)**: Visualizes sweep scan planes reading the intact pool, creating consensus cells, and lifting the discovered organic shape.
+- **Crescent vs box (Filters vs manifolds)**: Standalone 2D comparison showing why axis-aligned boxes fail on a curved target distribution.
+- **Feedback manifold (Learned shape)**: Interactive clinician acceptance/rejection demonstration, causing liquid metaball fusion and split morphs.
 
 ---
 
-## 💻 Getting Started
+## 🏛 Legacy Single-File Executive Briefings
 
-### Prerequisites
-- Node.js (v18 or higher)
-- npm (v9 or higher)
+The original self-contained briefings are fully preserved and served statically. They do not require any local build or local assets (all dependencies are loaded from verified CDNs):
 
-### Installation
+- **Interactive Cohort Topology Briefing**: Served at `/legacy-htmls/index.html` (compares additive scans vs. rigid subtractive carving).
+- **Filters vs. Manifolds Companion Briefing**: Served at `/legacy-htmls/filters-vs-manifolds.html` (contains continuous-flow clinician-feedback manifolds).
+
+Both briefings can be loaded directly from your browser when running the dev server or built in production.
+
+---
+
+## 📦 Building & Deploying to GitHub Pages
+
+This repository is optimized for **GitHub Pages** deployment with automated builds.
+
+### 1. Automated GitHub Pages (Recommended)
+
+We have configured an automated deployment workflow using GitHub Actions:
+
+1. Go to your repository settings on GitHub.
+2. Navigate to **Pages** under the **Code and automation** sidebar.
+3. Under **Build and deployment -> Source**, change the dropdown from "Deploy from a branch" to **"GitHub Actions"**.
+4. Push your changes to the `main` branch. GitHub will automatically compile the Vite bundle and deploy the app!
+
+### 2. Manual Build
+
+To build the static assets manually:
+
 ```bash
-npm install
+npm run build
 ```
 
-### Run the Interactive Development Server
-To open the Motion Canvas editor in your browser and play/render the animation:
+This compiles all files into the `dist/` directory, containing:
+- `dist/index.html` (the primary gallery)
+- `dist/legacy-htmls/` (the standalone executive briefings)
+- `dist/assets/` (compressed CSS and JS files using relative asset paths)
+
+You can preview your build locally using:
 ```bash
-npm start
+npm run preview
 ```
-Then open [http://localhost:9000](http://localhost:9000) (or the port specified in console) in Chrome.
-
----
-
-## 🧹 Quality Assurance (Lint & Typecheck)
-
-To run strict static checks and verify types:
-```bash
-# Run both
-npm run lint && npm run typecheck
-```
-
----
-
-## 📁 Repository Organization & Backups
-
-The original Three.js implementation has been fully preserved for reference:
-- `src-threejs/` — Original Three.js animation sources
-- `index-threejs.html` — Original entry HTML
-- `styles-threejs.css` — Original styles overlay
-
-All active, production Motion Canvas files reside in the root and under `src/`.
-
----
-
-## 🤖 AI Agents & Contributors
-If you are an AI agent working on this repository:
-- You MUST read and adhere to [`agents.md`](./agents.md).
-- You MUST run all shell commands using `lean-ctx` (e.g., `lean-ctx -c npm run build`).
-- You MUST verify that `npm run lint && npm run typecheck` passes with zero errors before completing your tasks.
