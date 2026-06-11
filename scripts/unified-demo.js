@@ -282,7 +282,7 @@ class UnifiedStoryDemo {
       kicker: "04 / 04 · Continuous Improvement",
       title: "Shape is intelligence.",
       body:
-        "Pulsar learns who belongs in your trial. Clinicians review candidates; trial evidence and conversion performance tighten the shape with each round—fewer records off target, more patients who convert.",
+        "Pulsar learns from clinicians: who they'd refer, and why. Each round, the shape tightens—fewer off-target records, more patients who convert.",
       metrics: [],
     };
   }
@@ -311,7 +311,7 @@ class UnifiedStoryDemo {
       {
         kicker: "03 / 04 · Shape Detection",
         title: "Thinking outside the box.",
-        body: "Instead of filtering records, Pulsar captures desired patient attributes in all of their complex glory.",
+        body: "Instead of filtering records using thresholds, Pulsar detects complex patterns that connect ideal candidates and turns them into actioanable searches.",
         stepLabel: "Topology",
         demo: "scan",
         stepIndex: 0,
