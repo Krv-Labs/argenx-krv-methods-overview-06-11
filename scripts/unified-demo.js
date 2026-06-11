@@ -182,10 +182,11 @@ class UnifiedStoryDemo {
 
   constructor(api) {
     this.api = api;
-    this.stepIndex = 0;
+    this._stepIndex = 0;
     this.slide1Revealed = 0;
     this.slide1Raf = null;
     this.animPlayed = false;
+    this.slide3Phase = 0;
 
     this.wrapperApi = {
       updateDetails: (details) => {
@@ -197,6 +198,9 @@ class UnifiedStoryDemo {
           body: slide.body,
           stepLabel: slide.stepLabel,
         };
+        if (this.stepIndex === 2) {
+          finalDetails.stepLabel = this.slide3Phase >= 2 ? "Topology" : "Geometry";
+        }
         if (slide.metrics) {
           finalDetails.metrics = slide.metrics;
         }
@@ -212,6 +216,19 @@ class UnifiedStoryDemo {
     this.crescentDemo = new CrescentFilterDemo(this.wrapperApi);
     this.manifoldDemo = new ManifoldFeedbackDemo(this.wrapperApi);
     this.verdictDemo = new VerdictSubDemo(this.wrapperApi);
+  }
+
+  get stepIndex() {
+    return this._stepIndex;
+  }
+
+  set stepIndex(val) {
+    if (val !== this._stepIndex) {
+      this.slide3Phase = 0;
+      this.animPlayed = false;
+      this.slide1Revealed = 0;
+    }
+    this._stepIndex = val;
   }
 
   getSlideConfig() {
@@ -283,6 +300,30 @@ class UnifiedStoryDemo {
       cancelAnimationFrame(this.slide1Raf);
       this.slide1Raf = null;
     }
+    if (this.scanDemo?.stopPlay) {
+      this.scanDemo.stopPlay();
+    }
+  }
+
+  isSlide3() {
+    return this.stepIndex === 2;
+  }
+
+  playSlide3Phase(phase) {
+    const onComplete = () => {
+      this.slide3Phase = phase;
+      if (phase === 2) {
+        // Keep the in-flight melted SVG — re-rendering would restart the goo filter.
+        this.scanDemo.updateCopy();
+      } else {
+        this.render();
+      }
+    };
+    if (phase === 1) {
+      this.scanDemo.playGeometryPhase(onComplete);
+    } else if (phase === 2) {
+      this.scanDemo.playTopologyPhase(onComplete);
+    }
   }
 
   step(delta) {
@@ -290,33 +331,51 @@ class UnifiedStoryDemo {
     const hasAnim = config.hasAnimation;
 
     if (delta > 0) {
-      if (hasAnim && !this.animPlayed) {
-        this.animPlayed = true;
-        this.play();
-      } else {
-        if (this.stepIndex < 3) {
+      if (this.isSlide3()) {
+        if (this.slide3Phase === 0) {
+          this.playSlide3Phase(1);
+        } else if (this.slide3Phase === 1) {
+          this.playSlide3Phase(2);
+        } else if (this.stepIndex < 3) {
           this.stepIndex++;
-          this.animPlayed = false;
-          this.slide1Revealed = 0;
           this.stopSlideAnimations();
           this.render();
         }
-      }
-    } else {
-      if (hasAnim && this.animPlayed) {
+      } else if (hasAnim && !this.animPlayed) {
+        this.animPlayed = true;
+        this.play();
+      } else if (this.stepIndex < 3) {
+        this.stepIndex++;
         this.animPlayed = false;
         this.slide1Revealed = 0;
         this.stopSlideAnimations();
         this.render();
-      } else {
-        if (this.stepIndex > 0) {
-          this.stepIndex--;
-          this.animPlayed = false;
-          this.slide1Revealed = 0;
-          this.stopSlideAnimations();
-          this.render();
-        }
       }
+    } else if (this.isSlide3()) {
+      if (this.slide3Phase === 2) {
+        this.slide3Phase = 1;
+        this.stopSlideAnimations();
+        this.render();
+      } else if (this.slide3Phase === 1) {
+        this.slide3Phase = 0;
+        this.stopSlideAnimations();
+        this.render();
+      } else if (this.stepIndex > 0) {
+        this.stepIndex--;
+        this.stopSlideAnimations();
+        this.render();
+      }
+    } else if (hasAnim && this.animPlayed) {
+      this.animPlayed = false;
+      this.slide1Revealed = 0;
+      this.stopSlideAnimations();
+      this.render();
+    } else if (this.stepIndex > 0) {
+      this.stepIndex--;
+      this.animPlayed = false;
+      this.slide1Revealed = 0;
+      this.stopSlideAnimations();
+      this.render();
     }
   }
 
@@ -324,10 +383,15 @@ class UnifiedStoryDemo {
     const config = this.getSlideConfig();
     const hasAnim = config.hasAnimation;
     if (delta > 0) {
+      if (this.isSlide3()) {
+        return this.slide3Phase < 2 || this.stepIndex < 3;
+      }
       return (hasAnim && !this.animPlayed) || this.stepIndex < 3;
-    } else {
-      return (hasAnim && this.animPlayed) || this.stepIndex > 0;
     }
+    if (this.isSlide3()) {
+      return this.slide3Phase > 0 || this.stepIndex > 0;
+    }
+    return (hasAnim && this.animPlayed) || this.stepIndex > 0;
   }
 
   render() {
@@ -395,6 +459,14 @@ class UnifiedStoryDemo {
       this.stageHost.replaceChildren(demo.host);
       if (this.stepIndex === 0) {
         demo.render({ hideCage: true, lit: 1, partialA: 1, plane: null, redBox: false, slide1Revealed: this.slide1Revealed });
+      } else if (this.stepIndex === 2) {
+        if (this.slide3Phase === 2) {
+          demo.render(this.scanDemo.topologyHoldState(true));
+        } else if (this.slide3Phase === 1) {
+          demo.render(this.scanDemo.geometryHoldState());
+        } else {
+          demo.render();
+        }
       } else {
         demo.render();
       }

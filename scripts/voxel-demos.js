@@ -477,6 +477,7 @@ export class ScanConsensusDemo {
     this.state = { plane: null, lit: 0, partialA: 0, redBox: false, lift: 0 };
     this.singularScaffold = false;
     this.solidGrayPartials = false;
+    this.playRaf = null;
   }
 
   mount(stageHost, controlsHost) {
@@ -778,43 +779,51 @@ export class ScanConsensusDemo {
 
   drawGroupOutlines(svg) {
     const isUnmelt = this.state && this.state.unmelt;
-    // 1. Add the gooey filter defs to the SVG
-    const defs = `
-      <defs>
-        <filter id="gooey-melt" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
-          <!-- 1. Blur the source blocks slightly (to 4 or from 4 to 0 depending on unmelt) -->
-          <feGaussianBlur in="SourceGraphic" stdDeviation="${isUnmelt ? 4 : 0}" result="blur">
+    const isFrozen = this.state && this.state.meltComplete;
+    const purpleGoo = "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10";
+    const identityGoo = "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10";
+    const purpleOutline = "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0";
+    const hiddenOutline = "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0";
+
+    let blurBlock;
+    let gooBlock;
+    let outlineBlock;
+
+    if (isFrozen) {
+      blurBlock = `<feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />`;
+      gooBlock = `<feColorMatrix in="blur" mode="matrix" values="${purpleGoo}" result="goo" />`;
+      outlineBlock = `<feColorMatrix in="rawOutline" mode="matrix" result="coloredOutline" values="${purpleOutline}" />`;
+    } else {
+      blurBlock = `<feGaussianBlur in="SourceGraphic" stdDeviation="${isUnmelt ? 4 : 0}" result="blur">
             <animate attributeName="stdDeviation" 
                      from="${isUnmelt ? 4 : 0}" 
                      to="${isUnmelt ? 0 : 4}" 
                      dur="1.2s" begin="0.2s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4, 0, 0.2, 1" />
-          </feGaussianBlur>
-          
-          <!-- 2. High-contrast threshold and smooth color transition to brand purple (#9c27b8) -->
-          <feColorMatrix in="blur" mode="matrix" 
-                         values="${isUnmelt ? "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10" : "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10"}" result="goo">
+          </feGaussianBlur>`;
+      gooBlock = `<feColorMatrix in="blur" mode="matrix" 
+                         values="${isUnmelt ? purpleGoo : identityGoo}" result="goo">
             <animate attributeName="values"
-                     from="${isUnmelt ? "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10" : "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10"}"
-                     to="${isUnmelt ? "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10" : "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10"}"
+                     from="${isUnmelt ? purpleGoo : identityGoo}"
+                     to="${isUnmelt ? identityGoo : purpleGoo}"
                      dur="1.2s" begin="0.2s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4, 0, 0.2, 1" />
-          </feColorMatrix>
-          
-          <!-- 3. Dilate the sharp fills slightly outward by 1.0px to form the outline base -->
-          <feMorphology in="goo" operator="dilate" radius="1.0" result="dilated" />
-          
-          <!-- 4. Subtract the original goo from the dilated shape to leave ONLY a thin 1.0px outline ring -->
-          <feComposite in="dilated" in2="goo" operator="out" result="rawOutline" />
-          
-          <!-- 5. Recolor outline ring to #6e1b82 (dark purple) and animate its fade-in after melting is done -->
-          <feColorMatrix in="rawOutline" mode="matrix" result="coloredOutline"
-                         values="${isUnmelt ? "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0" : "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0"}">
+          </feColorMatrix>`;
+      outlineBlock = `<feColorMatrix in="rawOutline" mode="matrix" result="coloredOutline"
+                         values="${isUnmelt ? purpleOutline : hiddenOutline}">
             <animate attributeName="values"
-                     from="${isUnmelt ? "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0" : "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0"}"
-                     to="${isUnmelt ? "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0" : "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0"}"
+                     from="${isUnmelt ? purpleOutline : hiddenOutline}"
+                     to="${isUnmelt ? hiddenOutline : purpleOutline}"
                      dur="0.6s" begin="${isUnmelt ? "0.0s" : "1.4s"}" fill="freeze" />
-          </feColorMatrix>
-          
-          <!-- 6. Composite the 1px outline ring OVER the solid purple goo fill -->
+          </feColorMatrix>`;
+    }
+
+    const defs = `
+      <defs>
+        <filter id="gooey-melt" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+          ${blurBlock}
+          ${gooBlock}
+          <feMorphology in="goo" operator="dilate" radius="1.0" result="dilated" />
+          <feComposite in="dilated" in2="goo" operator="out" result="rawOutline" />
+          ${outlineBlock}
           <feComposite in="coloredOutline" in2="goo" operator="over" />
         </filter>
       </defs>
@@ -889,6 +898,100 @@ export class ScanConsensusDemo {
     return { plane: null, lit: 1, partialA: 0, redBox: false, lift: 1 };
   }
 
+  stopPlay() {
+    if (this.playRaf) {
+      cancelAnimationFrame(this.playRaf);
+      this.playRaf = null;
+    }
+  }
+
+  geometryHoldState() {
+    return {
+      plane: null,
+      lit: 1,
+      partialA: 0,
+      partialCount: 0,
+      camera: { angle: 0, pitch: 85 },
+      drawBubbles: false,
+    };
+  }
+
+  topologyHoldState(frozen = false) {
+    return {
+      ...this.geometryHoldState(),
+      drawBubbles: true,
+      meltComplete: frozen,
+    };
+  }
+
+  renderGeometryFrame(phase) {
+    if (phase < 0.4) {
+      const u = phase / 0.4;
+      const axes = [
+        { ax: "x", n: W, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+        { ax: "y", n: H, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+        { ax: "z", n: D, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+      ];
+      const current = axes[Math.min(2, Math.floor(u * 3))];
+      const local = (u * 3) % 1;
+      const plane = { ...current, i: Math.min(current.n - 1, Math.floor(local * current.n)) };
+      return this.render({ plane, lit: 1, partialA: 1 });
+    }
+    if (phase < 0.7) {
+      const u = (phase - 0.4) / 0.3;
+      const pCount = Math.round((1 - u) * PARTIALS.length);
+      return this.render({ plane: null, lit: 1, partialA: pCount > 0 ? 1 : 0, partialCount: pCount });
+    }
+    const u = (phase - 0.7) / 0.3;
+    const t_rot = easeInOut(u);
+    const angle = lerp(45, 0, t_rot);
+    const pitch = lerp(35.264, 85, t_rot);
+    return this.render({
+      plane: null,
+      lit: 1,
+      partialA: 0,
+      partialCount: 0,
+      camera: { angle, pitch },
+      drawBubbles: false,
+    });
+  }
+
+  playGeometryPhase(onComplete) {
+    this.stopPlay();
+    const duration = REDUCED ? 60 : 3200;
+    const start = performance.now();
+    const tick = (now) => {
+      const phase = clamp((now - start) / duration, 0, 1);
+      this.renderGeometryFrame(phase);
+      if (phase < 1) {
+        this.playRaf = requestAnimationFrame(tick);
+      } else {
+        this.playRaf = null;
+        this.render(this.geometryHoldState());
+        if (onComplete) onComplete();
+      }
+    };
+    this.playRaf = requestAnimationFrame(tick);
+  }
+
+  playTopologyPhase(onComplete) {
+    this.stopPlay();
+    this.render(this.topologyHoldState(false));
+    const duration = REDUCED ? 40 : 2000;
+    const start = performance.now();
+    const tick = (now) => {
+      const elapsed = now - start;
+      if (elapsed < duration) {
+        this.playRaf = requestAnimationFrame(tick);
+      } else {
+        this.playRaf = null;
+        this.state = { ...this.topologyHoldState(true) };
+        if (onComplete) onComplete();
+      }
+    };
+    this.playRaf = requestAnimationFrame(tick);
+  }
+
   async play() {
     const start = performance.now();
     const duration = REDUCED ? 80 : 4200;
@@ -904,33 +1007,10 @@ export class ScanConsensusDemo {
     const phase = t / duration;
     if (this.singularScaffold) {
       if (this.stepIndex === 0) {
-        // Slide 3 Animation: Sweep -> Disappear -> Rotate 2D & Melt
-        if (phase < 0.4) {
-          // Phase 1: Sweep (0.0 -> 0.4)
-          const u = phase / 0.4;
-          const axes = [
-            { ax: "x", n: W, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
-            { ax: "y", n: H, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
-            { ax: "z", n: D, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
-          ];
-          const current = axes[Math.min(2, Math.floor(u * 3))];
-          const local = (u * 3) % 1;
-          const plane = { ...current, i: Math.min(current.n - 1, Math.floor(local * current.n)) };
-          return this.render({ plane, lit: 1, partialA: 1 });
-        } else if (phase < 0.7) {
-          // Phase 2: Non-targets disappear one by one (0.4 -> 0.7)
-          const u = (phase - 0.4) / 0.3;
-          const pCount = Math.round((1 - u) * PARTIALS.length);
-          return this.render({ plane: null, lit: 1, partialA: pCount > 0 ? 1 : 0, partialCount: pCount });
-        } else {
-          // Phase 3: Camera rotation to 2D flat view and gooey melt (0.7 -> 1.0)
-          const u = (phase - 0.7) / 0.3;
-          const t_rot = easeInOut(u);
-          const angle = lerp(45, 0, t_rot);
-          const pitch = lerp(35.264, 85, t_rot);
-          const drawBubbles = phase >= 0.99;
-          return this.render({ plane: null, lit: 1, partialA: 0, partialCount: 0, camera: { angle, pitch }, drawBubbles });
+        if (phase < 0.95) {
+          return this.renderGeometryFrame(phase / 0.95);
         }
+        return this.render({ ...this.geometryHoldState(), drawBubbles: phase >= 0.99 });
       } else if (this.stepIndex === 2) {
         // Slide 4 Animation: Stay in flat 2D view and smoothly dismorph the manifold
         return this.render({ plane: null, lit: 1, partialA: 0, redBox: false, camera: { angle: 0, pitch: 85 }, drawBubbles: true, dismorphProgress: phase });
