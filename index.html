@@ -20,10 +20,6 @@
       <span id="stepLabel">Choose a graphic</span>
     </div>
     <div class="topbar__actions" aria-label="Export controls">
-      <button id="btnGallery" class="tool-button" type="button" title="Back to gallery">
-        <span class="tool-button__icon" aria-hidden="true">G</span>
-        <span>Gallery</span>
-      </button>
       <button id="btnSvg" class="tool-button" type="button" title="Download SVG screenshot">
         <span class="tool-button__icon" aria-hidden="true">S</span>
         <span>SVG</span>
@@ -36,35 +32,8 @@
   </header>
 
   <main class="workspace">
-    <aside class="gallery-rail" aria-label="Demo gallery">
-      <div class="rail-heading">
-        <div class="eyebrow">Graphics</div>
-        <h1>Demo gallery</h1>
-      </div>
-      <div id="demoList" class="demo-list"></div>
-
-      <div class="rail-heading" style="margin-top: 32px; border-top: 1px solid var(--rule); padding-top: 24px;">
-        <div class="eyebrow">Briefings</div>
-        <h2 style="font-family: 'Instrument Serif', Georgia, serif; font-size: 24px; font-weight: 400; margin-top: 6px; margin-bottom: 12px;">Standalone</h2>
-      </div>
-      <div class="demo-list">
-        <a href="./legacy-htmls/index.html" target="_blank" class="demo-card" style="text-decoration: none; display: grid; gap: 7px; padding: 14px;">
-          <div class="demo-card__kicker">Interactive Topology</div>
-          <h3 class="demo-card__title" style="margin: 0; font-size: 17px;">Cohort Topology ↗</h3>
-          <p class="demo-card__body" style="margin: 0;">Traditional rigid database filtering vs. additive sweeps.</p>
-        </a>
-        <a href="./legacy-htmls/filters-vs-manifolds.html" target="_blank" class="demo-card" style="text-decoration: none; display: grid; gap: 7px; padding: 14px;">
-          <div class="demo-card__kicker">Companion Briefing</div>
-          <h3 class="demo-card__title" style="margin: 0; font-size: 17px;">Filters vs. Manifolds ↗</h3>
-          <p class="demo-card__body" style="margin: 0;">2D comparison showing why hypercube box-filtering fails on curved distributions.</p>
-        </a>
-      </div>
-    </aside>
-
     <section class="viewer" aria-label="Selected demo">
-      <div id="galleryView" class="gallery-view"></div>
-
-      <div id="demoView" class="demo-view" hidden>
+      <div id="demoView" class="demo-view">
         <aside class="narrative-panel">
           <div id="demoKicker" class="eyebrow">Select a demo</div>
           <h2 id="demoTitle">Pulsar graphics gallery</h2>
@@ -76,9 +45,12 @@
         <div class="stage-wrap">
           <div id="stageHost" class="stage-host"></div>
           <div class="stage-toolbar" aria-label="Playback controls">
-            <button id="btnPrev" class="nav-button" type="button">Prev</button>
-            <button id="btnPlay" class="nav-button nav-button--primary" type="button">Play</button>
-            <button id="btnNext" class="nav-button" type="button">Next</button>
+            <div class="stage-toolbar__nav">
+              <button id="btnPrev" class="nav-button" type="button">Prev</button>
+              <button id="btnNext" class="nav-button nav-button--primary" type="button">Next</button>
+            </div>
+            <div id="dotContainer" class="dot-container"></div>
+            <div id="stageNum" class="stage-num">01</div>
           </div>
         </div>
       </div>

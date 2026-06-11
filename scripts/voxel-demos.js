@@ -40,9 +40,9 @@ const TRUE_CELLS = (() => {
 const TRUE_SET = new Set(TRUE_CELLS.map((cell) => cell.join(",")));
 
 function blockDims(s) {
-  const bw = Math.round(lerp(3, W, s));
-  const bh = Math.round(lerp(3, H, s));
-  const bd = Math.round(lerp(3, D, s));
+  const bw = Math.round(lerp(0, W, s));
+  const bh = Math.round(lerp(0, H, s));
+  const bd = Math.round(lerp(0, D, s));
   const x0 = clamp(6 - Math.floor(bw / 2), 0, W - bw);
   const y0 = clamp(4 - Math.floor(bh / 2), 0, H - bh);
   const z0 = clamp(6 - Math.floor(bd / 2), 0, D - bd);
@@ -165,6 +165,23 @@ function buildCurveSvg(statsName, pointsA, pointsB, pointsTotal, activeIndex) {
     </svg>`;
 }
 
+function buildCaptureCurveSvg(ins, outs, activeIndex) {
+  const max = Math.max(...ins, ...outs, 1);
+  const path = (arr) =>
+    arr.map((value, i) => `${i ? "L" : "M"}${((i / (arr.length - 1)) * 300).toFixed(1)} ${(78 - (value / max) * 64).toFixed(1)}`).join(" ");
+  const x = (activeIndex / (ins.length - 1)) * 300;
+  const y_in = 78 - (ins[activeIndex] / max) * 64;
+  const y_out = 78 - (outs[activeIndex] / max) * 64;
+  return `
+    <svg viewBox="0 0 300 96" preserveAspectRatio="none" aria-label="Filter capture curve">
+      <line x1="0" y1="78" x2="300" y2="78" stroke="rgba(32,35,51,.22)" stroke-width="1"/>
+      <path d="${path(ins)}" fill="none" stroke="rgba(13,126,143,0.92)" stroke-width="2"/>
+      <path d="${path(outs)}" fill="none" stroke="rgb(110, 114, 110)" stroke-width="1.8"/>
+      <circle cx="${x.toFixed(1)}" cy="${y_in.toFixed(1)}" r="3.5" fill="rgba(13,126,143,0.92)"/>
+      <circle cx="${x.toFixed(1)}" cy="${y_out.toFixed(1)}" r="3.5" fill="rgb(110, 114, 110)"/>
+    </svg>`;
+}
+
 export class CubeThresholdDemo {
   static id = "cube-growth";
   static title = "Cube growth and shrink";
@@ -175,7 +192,7 @@ export class CubeThresholdDemo {
   constructor(api) {
     this.api = api;
     this.stepIndex = 0;
-    this.s = 0.5;
+    this.s = 0.0;
     this.h = new Heerich({ camera: { type: "isometric" }, gap: 0.07 });
   }
 
@@ -211,6 +228,12 @@ export class CubeThresholdDemo {
     const curve = document.createElement("div");
     curve.id = "cubeCurve";
     group.appendChild(curve);
+
+    const tagline = document.createElement("p");
+    tagline.style.cssText = "margin-top: 16px; font-size: 11px; color: var(--muted); text-align: center; font-style: italic;";
+    tagline.textContent = "Whatever you choose, you lose.";
+    group.appendChild(tagline);
+
     return group;
   }
 
@@ -229,21 +252,39 @@ export class CubeThresholdDemo {
 
   updateCopy(extraMetrics = {}) {
     const st = blockStats(this.s);
-    this.api.updateDetails({
-      kicker: "Rigid filters",
-      title: ["Start with every candidate.", "Filters carve the cube.", "The block size problem has no clean answer."][this.stepIndex],
-      body: [
-        "The EHR pool begins as one undifferentiated block. No patient-level shape has been used.",
-        "Each threshold removes a slab before anyone can inspect whether the excluded patients belonged.",
-        "A tight block misses candidates. A loose block creates review burden. The slider only chooses which failure mode dominates.",
-      ][this.stepIndex],
-      metrics: [
+    
+    let metrics;
+    if (this.stepIndex === 2) {
+      const d = blockDims(this.s);
+      const inside = ([x, y, z]) => this.s > 0 && x >= d.x0 && x < d.x0 + d.bw && y >= d.y0 && y < d.y0 + d.bh && z >= d.z0 && z < d.z0 + d.bd;
+      const captured_in = TRUE_CELLS.filter(inside).length;
+      const real_out = PARTIALS.filter(inside).length;
+      const captured_out = Math.round(real_out * 1.8);
+      metrics = [
+        ["IN Captured", String(captured_in)],
+        ["OUT Captured", String(captured_out)],
+        ["Targets Missed", String(TRUE_CELLS.length - captured_in)],
+        ["Total Targets", String(TRUE_CELLS.length)],
+      ];
+    } else {
+      metrics = [
         ["Missed", String(st.missed)],
         ["Review hrs", String(st.hours)],
         ["Captured cells", String(st.captured)],
         ["Block cells", String(st.bw * st.bh * st.bd)],
         ...Object.entries(extraMetrics),
-      ],
+      ];
+    }
+
+    this.api.updateDetails({
+      kicker: "Rigid filters",
+      title: ["Start with every candidate.", "Filters carve the cube.", "Why Filters Fail"][this.stepIndex],
+      body: [
+        "The EHR pool begins as one undifferentiated block. No patient-level shape has been used.",
+        "Each threshold removes a slab before anyone can inspect whether the excluded patients belonged.",
+        "A tight filter misses valid candidates. A loose filter creates overwhelming review burden. Adjust the slider to choose which failure mode dominates.",
+      ][this.stepIndex],
+      metrics,
       modeLabel: "Cube threshold",
       stepLabel: this.stepName,
     });
@@ -253,6 +294,32 @@ export class CubeThresholdDemo {
     const cuts = params.cuts || (this.stepIndex >= 1 ? { x: 1, y: 1, z: 1 } : { x: 0, y: 0, z: 0 });
     const heat = params.heat || { x: 0, y: 0, z: 0 };
     this.h.clear();
+
+    // Anchor bounds with invisible boxes to lock camera view extents
+    this.h.applyGeometry({
+      type: "box",
+      position: [0, 0, 0],
+      size: 1,
+      opaque: false,
+      style: { default: { fill: "none", stroke: "none" } }
+    });
+    this.h.applyGeometry({
+      type: "box",
+      position: [W - 1, H - 1, D - 1],
+      size: 1,
+      opaque: false,
+      style: { default: { fill: "none", stroke: "none" } }
+    });
+
+    // Mirror fill-cage geometry for identical viewBox matching
+    this.h.applyGeometry({
+      type: "fill",
+      bounds: [[0, 0, 0], [W, H, D]],
+      test: (x, y, z) => CAGE_TEST(x, y, z),
+      opaque: false,
+      meta: { id: "cage" },
+      style: { default: { fill: "none", stroke: "none" } },
+    });
 
     if (this.stepIndex === 2 || params.slider) {
       this.applySliderBlock(params.s ?? this.s);
@@ -272,48 +339,88 @@ export class CubeThresholdDemo {
 
   applySliderBlock(s) {
     const d = blockDims(s);
-    this.h.applyGeometry({
-      type: "box",
-      position: [d.x0, d.y0, d.z0],
-      size: [d.bw, d.bh, d.bd],
-      meta: { id: "waste" },
-      style: {
-        default: (x, y, z) => {
-          const l = 0.86 + (y / H) * 0.05 + (((x + z) & 1) ? 0.008 : 0);
-          return { fill: `oklch(${l} 0.006 250)`, stroke: `oklch(${l * 0.5} 0.012 250)`, strokeWidth: 0.7 };
-        },
-      },
-    });
-    for (const [x, y, z] of TRUE_CELLS) {
-      const inside = x >= d.x0 && x < d.x0 + d.bw && y >= d.y0 && y < d.y0 + d.bh && z >= d.z0 && z < d.z0 + d.bd;
-      if (inside) continue;
+    const inside = (x, y, z) => s > 0 && x >= d.x0 && x < d.x0 + d.bw && y >= d.y0 && y < d.y0 + d.bh && z >= d.z0 && z < d.z0 + d.bd;
+
+    // 1. Draw the completely opaque filter box
+    if (s > 0) {
       this.h.applyGeometry({
         type: "box",
-        position: [x, y, z],
-        size: 1,
-        opaque: false,
-        meta: { id: "missed" },
+        position: [d.x0, d.y0, d.z0],
+        size: [d.bw, d.bh, d.bd],
+        opaque: true,
+        meta: { id: "filter-cage" },
         style: {
-          default: { fill: "rgba(217,38,66,0.55)", stroke: "#d92642", strokeWidth: 0.9 },
-          top: { fill: "rgba(217,38,66,0.65)", hatch: { angle: 45, period: 4, stroke: "#a91c34", strokeWidth: 0.45 } },
-        },
+          default: { fill: "rgba(217, 38, 66, 1.000)", stroke: "#820a1a", strokeWidth: 0.6 }
+        }
       });
+    }
+
+    // 2. Draw IN Patients (Consensus cells)
+    for (let i = 0; i < TRUE_CELLS.length; i++) {
+      const [x, y, z] = TRUE_CELLS[i];
+      const role = TRUE_ROLES[i];
+      const strong = role === "core";
+      const isInside = inside(x, y, z);
+      
+      const activeColor = strong ? "rgba(13,126,143,0.92)" : "rgba(13,126,143,0.66)";
+      const isBlue = !isInside;
+
+      const fill = isBlue ? activeColor : "rgba(215, 217, 218, 1.000)";
+      const stroke = isBlue ? "#0a5f6d" : "rgb(110, 114, 110)";
+
+      const style = {
+        default: { fill, stroke, strokeWidth: 0.8 },
+        top: { fill, hatch: { angle: 45, period: 3.6, stroke: isBlue ? "#f4f1e9" : "#d8dbda", strokeWidth: 0.5 } },
+      };
+      if (strong) {
+        style.left = { fill, hatch: { angle: 135, period: 3.6, stroke: isBlue ? "#f4f1e9" : "#d8dbda", strokeWidth: 0.5 } };
+      }
+      this.h.applyGeometry({ type: "box", position: [x, y, z], size: 1, meta: { id: "in-patient" }, style });
+    }
+
+    // 3. Draw OUT Patients (Partials/shimmers)
+    for (const q of PARTIALS) {
+      const [x, y, z] = q;
+      // OUT patients always stay gray! Both inside and outside the filter box!
+      const fill = "rgba(215, 217, 218, 1.000)";
+      const stroke = "rgb(110, 114, 110)";
+
+      const style = {
+        default: { fill, stroke, strokeWidth: 0.8 },
+        top: { fill, hatch: { angle: 45, period: 3.6, stroke: "#d8dbda", strokeWidth: 0.5 } },
+        left: { fill, hatch: { angle: 135, period: 3.6, stroke: "#d8dbda", strokeWidth: 0.5 } },
+      };
+      this.h.applyGeometry({ type: "box", position: [x, y, z], size: 1, meta: { id: "out-patient" }, style });
     }
   }
 
   updateCurve() {
     const curve = document.querySelector("#cubeCurve");
     if (!curve) return;
-    const misses = [];
-    const hours = [];
-    const totals = [];
-    for (let i = 0; i < 81; i++) {
-      const stats = blockStats(i / 80);
-      misses.push(stats.missed * 1.5);
-      hours.push(stats.hours);
-      totals.push(stats.cost);
+
+    if (this.stepIndex === 2) {
+      const ins = [];
+      const outs = [];
+      for (let i = 0; i < 81; i++) {
+        const d = blockDims(i / 80);
+        const inside = ([x, y, z]) => i > 0 && x >= d.x0 && x < d.x0 + d.bw && y >= d.y0 && y < d.y0 + d.bh && z >= d.z0 && z < d.z0 + d.bd;
+        const real_out = PARTIALS.filter(inside).length;
+        ins.push(TRUE_CELLS.filter(inside).length);
+        outs.push(Math.round(real_out * 1.8));
+      }
+      curve.innerHTML = buildCaptureCurveSvg(ins, outs, Math.round(this.s * 80));
+    } else {
+      const misses = [];
+      const hours = [];
+      const totals = [];
+      for (let i = 0; i < 81; i++) {
+        const stats = blockStats(i / 80);
+        misses.push(stats.missed * 1.5);
+        hours.push(stats.hours);
+        totals.push(stats.cost);
+      }
+      curve.innerHTML = buildCurveSvg("Cube cost", misses, hours, totals, Math.round(this.s * 80));
     }
-    curve.innerHTML = buildCurveSvg("Cube cost", misses, hours, totals, Math.round(this.s * 80));
   }
 
   async play() {
@@ -439,6 +546,22 @@ export class ScanConsensusDemo {
     this.state = st;
     const h = this.h;
     h.clear();
+
+    // Anchor bounds with invisible boxes to lock camera view extents
+    h.applyGeometry({
+      type: "box",
+      position: [0, 0, 0],
+      size: 1,
+      opaque: false,
+      style: { default: { fill: "none", stroke: "none" } }
+    });
+    h.applyGeometry({
+      type: "box",
+      position: [W - 1, H - 1, D - 1],
+      size: 1,
+      opaque: false,
+      style: { default: { fill: "none", stroke: "none" } }
+    });
     const off = -Math.round(st.lift * 9);
     const liftSet = off > 0 ? new Set(TRUE_CELLS.map(([x, y, z]) => `${x},${y + off},${z}`)) : TRUE_SET;
 
@@ -448,7 +571,11 @@ export class ScanConsensusDemo {
       test: (x, y, z) => CAGE_TEST(x, y, z) && !liftSet.has(`${x},${y},${z}`),
       opaque: false,
       meta: { id: "cage" },
-      style: { default: { fill: "rgba(32,35,51,0.025)", stroke: "rgba(32,35,51,0.20)", strokeWidth: 0.5 } },
+      style: {
+        default: st.hideCage
+          ? { fill: "none", stroke: "none" }
+          : { fill: "rgba(32,35,51,0.025)", stroke: "rgba(32,35,51,0.20)", strokeWidth: 0.5 }
+      },
     });
 
     const n = Math.round(st.lit * TRUE_CELLS.length);
@@ -456,9 +583,28 @@ export class ScanConsensusDemo {
       const [x, y, z] = TRUE_CELLS[i];
       const role = TRUE_ROLES[i];
       const strong = role === "core";
-      const fill = strong ? "rgba(13,126,143,0.92)" : "rgba(13,126,143,0.66)";
+      
+      let fill, stroke;
+      if (st.slide1Revealed !== undefined) {
+        const t = st.slide1Revealed;
+        const targetFill = strong ? [13, 126, 143, 0.92] : [13, 126, 143, 0.66];
+        const r_fill = Math.round(215 + (targetFill[0] - 215) * t);
+        const g_fill = Math.round(217 + (targetFill[1] - 217) * t);
+        const b_fill = Math.round(218 + (targetFill[2] - 218) * t);
+        const a_fill = (1.0 + (targetFill[3] - 1.0) * t).toFixed(3);
+        fill = `rgba(${r_fill}, ${g_fill}, ${b_fill}, ${a_fill})`;
+
+        const r_stroke = Math.round(110 + (10 - 110) * t);
+        const g_stroke = Math.round(114 + (95 - 114) * t);
+        const b_stroke = Math.round(110 + (109 - 110) * t);
+        stroke = `rgb(${r_stroke}, ${g_stroke}, ${b_stroke})`;
+      } else {
+        fill = strong ? "rgba(13,126,143,0.92)" : "rgba(13,126,143,0.66)";
+        stroke = "#0a5f6d";
+      }
+
       const style = {
-        default: { fill, stroke: "#0a5f6d", strokeWidth: 0.8 },
+        default: { fill, stroke, strokeWidth: 0.8 },
         top: { fill, hatch: { angle: 45, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } },
       };
       if (strong) style.left = { fill, hatch: { angle: 135, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } };
@@ -466,17 +612,37 @@ export class ScanConsensusDemo {
     }
 
     if (st.partialA > 0.03) {
-      const a1 = (0.15 * st.partialA).toFixed(3);
-      const a2 = (0.45 * st.partialA).toFixed(3);
       for (const q of PARTIALS) {
-        h.applyGeometry({
-          type: "box",
-          position: q,
-          size: 1,
-          opaque: false,
-          meta: { id: "partial" },
-          style: { default: { fill: `rgba(13,126,143,${a1})`, stroke: `rgba(13,126,143,${a2})`, strokeWidth: 0.5, strokeDasharray: "2 2.5" } },
-        });
+        let fill, stroke, style;
+        if (st.slide1Revealed !== undefined) {
+          fill = "rgba(215, 217, 218, 1.000)";
+          stroke = "rgb(110, 114, 110)";
+          style = {
+            default: { fill, stroke, strokeWidth: 0.8 },
+            top: { fill, hatch: { angle: 45, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } },
+            left: { fill, hatch: { angle: 135, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } },
+          };
+          h.applyGeometry({
+            type: "box",
+            position: q,
+            size: 1,
+            meta: { id: "partial" },
+            style,
+          });
+        } else {
+          const a1 = (0.15 * st.partialA).toFixed(3);
+          const a2 = (0.45 * st.partialA).toFixed(3);
+          fill = `rgba(13,126,143,${a1})`;
+          stroke = `rgba(13,126,143,${a2})`;
+          h.applyGeometry({
+            type: "box",
+            position: q,
+            size: 1,
+            opaque: false,
+            meta: { id: "partial" },
+            style: { default: { fill, stroke, strokeWidth: 0.5, strokeDasharray: "2 2.5" } },
+          });
+        }
       }
     }
 
@@ -498,14 +664,37 @@ export class ScanConsensusDemo {
       const lo = [d.x0, d.y0, d.z0];
       const hi = [d.x0 + d.bw - 1, d.y0 + d.bh - 1, d.z0 + d.bd - 1];
       const inEdge = edgeCells(lo, hi);
-      h.applyGeometry({
-        type: "fill",
-        bounds: [lo, [hi[0] + 1, hi[1] + 1, hi[2] + 1]],
-        test: (x, y, z) => inEdge(x, y, z) && !TRUE_SET.has(`${x},${y},${z}`) && !CAGE_TEST(x, y, z),
-        opaque: false,
-        meta: { id: "redbox" },
-        style: { default: { fill: "rgba(217,38,66,0.022)", stroke: "rgba(217,38,66,0.34)", strokeWidth: 0.55, strokeDasharray: "2.5 2.5" } },
-      });
+      
+      for (let x = lo[0]; x <= hi[0]; x++) {
+        for (let y = lo[1]; y <= hi[1]; y++) {
+          for (let z = lo[2]; z <= hi[2]; z++) {
+            if (inEdge(x, y, z) && !TRUE_SET.has(`${x},${y},${z}`) && !CAGE_TEST(x, y, z)) {
+              h.applyGeometry({
+                type: "box",
+                position: [x, y, z],
+                size: 1,
+                opaque: false,
+                meta: { id: "redbox-cube" },
+                style: {
+                  default: {
+                    fill: "rgba(180, 24, 46, 0.52)",
+                    stroke: "rgba(130, 10, 26, 0.92)",
+                    strokeWidth: 0.45
+                  },
+                  top: {
+                    fill: "rgba(180, 24, 46, 0.58)",
+                    hatch: { angle: 45, period: 4, stroke: "rgba(255, 255, 255, 0.25)", strokeWidth: 0.45 }
+                  },
+                  left: {
+                    fill: "rgba(180, 24, 46, 0.58)",
+                    hatch: { angle: 135, period: 4, stroke: "rgba(255, 255, 255, 0.25)", strokeWidth: 0.45 }
+                  }
+                }
+              });
+            }
+          }
+        }
+      }
     }
 
     this.host.innerHTML = h.toSVG({ padding: 46 });

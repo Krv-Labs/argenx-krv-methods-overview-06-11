@@ -582,3 +582,19 @@ export class ManifoldFeedbackDemo {
     return this.host?.querySelector("svg") || null;
   }
 }
+
+export {
+  PATIENTS,
+  boxDims,
+  boxStats,
+  drawPatients,
+  drawFilter,
+  fieldContours,
+  loopsPath,
+  px,
+  py,
+  VIEW,
+  CEN,
+  N_T,
+  N_ALL
+};
