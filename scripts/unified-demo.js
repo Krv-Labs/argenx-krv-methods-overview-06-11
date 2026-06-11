@@ -217,10 +217,10 @@ class UnifiedStoryDemo {
   getSlideConfig() {
     const slides = [
       {
-        kicker: "",
+        kicker: "01 / 04 · Patient Space",
         title: "Every cube represents a patient.",
         body: "Each cube should be thought of as a patient in the EHR. The task? Determine which patients are good candidates for a clinical trial.",
-        stepLabel: "Topology",
+        stepLabel: "Geometry",
         demo: "scan",
         stepIndex: 1,
         metrics: [],
@@ -239,7 +239,7 @@ class UnifiedStoryDemo {
         kicker: "03 / 04 · Non-destructive Scan",
         title: "Thinking outside of a box.",
         body: "Instead of filtering records, Pulsar captures desired patient attributes in all of their complex glory.",
-        stepLabel: "Geometry",
+        stepLabel: "Topology",
         demo: "scan",
         stepIndex: 0,
         metrics: [],
