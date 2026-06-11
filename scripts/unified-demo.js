@@ -231,9 +231,15 @@ class UnifiedStoryDemo {
       this.slide1Revealed = 0;
       if (val === 3) {
         this.scanDemo.refinementLevel = 0;
+        this.scanDemo.ellipseLevel = 0;
       }
     }
     this._stepIndex = val;
+  }
+
+  slide4Tween(phase) {
+    // phases 0,1,2 -> loose ... snug ellipses; phase 3 = converged metaball.
+    return [0, 0.5, 1][Math.min(2, Math.max(0, phase))];
   }
 
   getSlide4InputsMarkup(activePhase = this.slide4Phase) {
@@ -271,30 +277,10 @@ class UnifiedStoryDemo {
     const title = "Learning The Best Shape";
     const body = "Search is different across every site. We iteratively improve the shape of patients we are looking for and make site specific improvements to increase the doctors' productivity.";
     const phases = [
-      {
-        kicker,
-        title,
-        body,
-        metrics: [["Precision", "78%"], ["Review", "4.2 hrs"]],
-      },
-      {
-        kicker,
-        title,
-        body,
-        metrics: [["Precision", "86%"], ["Review", "3.1 hrs"]],
-      },
-      {
-        kicker,
-        title,
-        body,
-        metrics: [["Precision", "92%"], ["Review", "2.0 hrs"]],
-      },
-      {
-        kicker,
-        title,
-        body,
-        metrics: [["Precision", "96%"], ["Review", "1.4 hrs"]],
-      },
+      { kicker, title, body, metrics: [["Fit accuracy", "72%"]] },
+      { kicker, title, body, metrics: [["Fit accuracy", "84%"]] },
+      { kicker, title, body, metrics: [["Fit accuracy", "93%"]] },
+      { kicker, title, body, metrics: [["Fit accuracy", "100%"]] },
     ];
     return phases[this.slide4Phase];
   }
@@ -382,7 +368,12 @@ class UnifiedStoryDemo {
       this.slide4Phase = phase;
       this.updateSlide4Panel();
     };
-    this.scanDemo.playRefinementBeat(phase, onComplete);
+    if (phase >= 3) {
+      // Final beat: snug ellipses crossfade into the slide-03 metaball blob.
+      this.scanDemo.playEllipseConvergeBeat(onComplete);
+    } else {
+      this.scanDemo.playEllipseBeat(this.slide4Tween(phase), onComplete);
+    }
   }
 
   ensureSlide4Host() {
@@ -416,10 +407,10 @@ class UnifiedStoryDemo {
       "padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--panel);box-shadow:var(--shadow-border);";
     group.innerHTML = `
       <div class="control-label" style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule);padding-bottom:8px;">
-        Inputs that refine the model
+        Refining the shape
       </div>
       <div id="slide4Inputs" style="display:flex;flex-direction:column;gap:10px;margin-top:4px;"></div>
-      <p style="font-size:10px;color:var(--muted);margin:0;line-height:1.5;">Click any input to toggle feedback, or use Next to apply sequentially.</p>
+      <p style="font-size:10px;color:var(--muted);margin:0;line-height:1.5;">Each round of information tightens the shape. Click a round, or use Next.</p>
     `;
     this.controlsHost.replaceChildren(group);
     const inputsHost = group.querySelector("#slide4Inputs");
@@ -441,7 +432,7 @@ class UnifiedStoryDemo {
           this.playSlide4Phase(targetPhase);
         } else if (targetPhase < this.slide4Phase) {
           this.slide4Phase = targetPhase;
-          this.scanDemo.refinementLevel = targetPhase;
+          this.scanDemo.ellipseLevel = this.slide4Tween(targetPhase);
           this.stopSlideAnimations();
           this.render();
           this.updateSlide4Panel();
@@ -481,6 +472,7 @@ class UnifiedStoryDemo {
           this.stepIndex++;
           this.slide4Phase = 0;
           this.scanDemo.refinementLevel = 0;
+          this.scanDemo.ellipseLevel = 0;
           this.stopSlideAnimations();
           this.render();
         }
@@ -501,7 +493,7 @@ class UnifiedStoryDemo {
     } else if (this.isSlide4()) {
       if (this.slide4Phase > 0) {
         this.slide4Phase--;
-        this.scanDemo.refinementLevel = this.slide4Phase;
+        this.scanDemo.ellipseLevel = this.slide4Tween(this.slide4Phase);
         this.stopSlideAnimations();
         this.render();
         this.updateSlide4Panel();
@@ -639,9 +631,9 @@ class UnifiedStoryDemo {
       } else if (this.stepIndex === 3) {
         this.ensureSlide4Host();
         const hold =
-          this.slide4Phase === 0
+          this.slide4Phase >= 3
             ? { ...this.scanDemo.topologyHoldState(true), hideCage: true }
-            : this.scanDemo.refinementHoldState(this.slide4Phase, true);
+            : this.scanDemo.ellipseHoldState(this.slide4Tween(this.slide4Phase), 1);
         demo.render({
           ...hold,
           singularScaffold: true,

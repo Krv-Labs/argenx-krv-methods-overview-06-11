@@ -39,6 +39,39 @@ const TRUE_CELLS = (() => {
 })();
 const TRUE_SET = new Set(TRUE_CELLS.map((cell) => cell.join(",")));
 
+// Connected components of the target patients (26-connectivity) so the diagonal
+// flare trail stays joined to the core. Used by slide 04 to fit one loose
+// ellipse per cluster.
+const TRUE_COMPONENTS = (() => {
+  const index = new Map();
+  TRUE_CELLS.forEach((cell, i) => index.set(cell.join(","), i));
+  const comp = new Array(TRUE_CELLS.length).fill(-1);
+  let next = 0;
+  for (let i = 0; i < TRUE_CELLS.length; i++) {
+    if (comp[i] !== -1) continue;
+    const id = next++;
+    const stack = [i];
+    comp[i] = id;
+    while (stack.length) {
+      const cur = stack.pop();
+      const [cx, cy, cz] = TRUE_CELLS[cur];
+      for (let dx = -1; dx <= 1; dx++) {
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dz = -1; dz <= 1; dz++) {
+            if (dx === 0 && dy === 0 && dz === 0) continue;
+            const j = index.get(`${cx + dx},${cy + dy},${cz + dz}`);
+            if (j !== undefined && comp[j] === -1) {
+              comp[j] = id;
+              stack.push(j);
+            }
+          }
+        }
+      }
+    }
+  }
+  return comp;
+})();
+
 function blockDims(s) {
   const bw = Math.round(lerp(0, W, s));
   const bh = Math.round(lerp(0, H, s));
@@ -486,6 +519,7 @@ export class ScanConsensusDemo {
     this.solidGrayPartials = false;
     this.playRaf = null;
     this.refinementLevel = 0;
+    this.ellipseLevel = 0;
   }
 
   mount(stageHost, controlsHost) {
@@ -586,7 +620,7 @@ export class ScanConsensusDemo {
       opaque: false,
       style: { default: { fill: "none", stroke: "none" } }
     });
-    const off = -Math.round(st.lift * 9);
+    const off = -Math.round((st.lift || 0) * 9);
     const liftSet = off > 0 ? new Set(TRUE_CELLS.map(([x, y, z]) => `${x},${y + off},${z}`)) : TRUE_SET;
 
     if (st.singularScaffold) {
@@ -674,7 +708,7 @@ export class ScanConsensusDemo {
       };
       if (strong) style.left = { fill, hatch: { angle: 135, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } };
       
-      const geo = { type: "box", position: [x, y + off, z], size: 1, meta: { id: ROLE_CARD[role] }, style };
+      const geo = { type: "box", position: [x, y + off, z], size: 1, meta: { id: ROLE_CARD[role], comp: TRUE_COMPONENTS[i] }, style };
       if (scale < 0.999) {
         geo.scale = [scale, scale, scale];
         geo.scaleOrigin = [0.5, 0.5, 0.5];
@@ -779,8 +813,133 @@ export class ScanConsensusDemo {
       }
     }
 
+    if (st.drawEllipses) {
+      const svg = this.host.querySelector("svg");
+      if (svg) {
+        this.drawComponentEllipses(svg, st.ellipseTween ?? 0, st.ellipseOpacity ?? 1);
+      }
+    }
+
     this.updateCopy();
     return this.getSvg();
+  }
+
+  // Slide 04: fit one loose purple ellipse per connected component of the fixed
+  // target patients. tween 0 = loose/oversized dashed outline, 1 = snug solid
+  // outline that approximates the final metaball blob. opacity scales the whole
+  // overlay for the crossfade into the real blob on the final beat.
+  drawComponentEllipses(svg, tween, opacity = 1) {
+    if (opacity <= 0.001) return;
+
+    // Heerich wraps faces in nested per-voxel transformed groups, so getBBox is
+    // not comparable across cells. Use screen-space rects mapped back into the
+    // content group's user space via the inverse CTM.
+    const contentGroup = svg.querySelector("g") || svg;
+    const ctm = contentGroup.getScreenCTM ? contentGroup.getScreenCTM() : null;
+    if (!ctm) return;
+    const inv = ctm.inverse();
+    const toUser = (sx, sy) => {
+      if (svg.createSVGPoint) {
+        const p = svg.createSVGPoint();
+        p.x = sx;
+        p.y = sy;
+        const u = p.matrixTransform(inv);
+        return [u.x, u.y];
+      }
+      const p = new DOMPoint(sx, sy).matrixTransform(inv);
+      return [p.x, p.y];
+    };
+
+    const groups = new Map();
+    const cellSizes = [];
+    svg.querySelectorAll("[data-comp]").forEach((node) => {
+      const key = node.getAttribute("data-comp");
+      const r = node.getBoundingClientRect();
+      if (!r || (r.width === 0 && r.height === 0)) return;
+      const [cx, cy] = toUser(r.left + r.width / 2, r.top + r.height / 2);
+      const [ux0, uy0] = toUser(r.left, r.top);
+      const [ux1, uy1] = toUser(r.right, r.bottom);
+      cellSizes.push(Math.max(Math.abs(ux1 - ux0), Math.abs(uy1 - uy0)));
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push([cx, cy]);
+    });
+    if (groups.size === 0) return;
+
+    // Characteristic cell size in user space so padding scales with the view.
+    cellSizes.sort((a, b) => a - b);
+    const cellU = cellSizes[Math.floor(cellSizes.length / 2)] || 12;
+
+    const t = clamp(tween, 0, 1);
+    // Loose -> snug. Loose state is clearly oversized and rounded; snug state
+    // hugs the cells. Pad keeps single-cell clusters visible.
+    const radiusScale = lerp(1.6, 1.05, t);
+    const pad = cellU * lerp(1.15, 0.45, t);
+    const minR = cellU * lerp(1.95, 0.95, t);
+    const dash = t < 0.92 ? `${(cellU * 0.3).toFixed(1)} ${(cellU * lerp(0.5, 0.22, t)).toFixed(1)}` : "none";
+    const stroke = "rgba(110,27,130,0.95)";
+    const fill = `rgba(156,39,184,${(0.05 + 0.07 * t).toFixed(3)})`;
+    const strokeWidth = (cellU * lerp(0.13, 0.16, t)).toFixed(2);
+
+    const ns = "http://www.w3.org/2000/svg";
+    const layer = document.createElementNS(ns, "g");
+    layer.setAttribute("data-ellipse-layer", "1");
+    layer.setAttribute("opacity", String(clamp(opacity, 0, 1)));
+
+    for (const pts of groups.values()) {
+      const n = pts.length;
+      let mx = 0;
+      let my = 0;
+      for (const [x, y] of pts) {
+        mx += x;
+        my += y;
+      }
+      mx /= n;
+      my /= n;
+
+      // 2x2 covariance -> principal axes (eigen-decomposition of symmetric mat).
+      let sxx = 0;
+      let syy = 0;
+      let sxy = 0;
+      for (const [x, y] of pts) {
+        const dx = x - mx;
+        const dy = y - my;
+        sxx += dx * dx;
+        syy += dy * dy;
+        sxy += dx * dy;
+      }
+      sxx /= n;
+      syy /= n;
+      sxy /= n;
+
+      const tr = sxx + syy;
+      const det = sxx * syy - sxy * sxy;
+      const disc = Math.sqrt(Math.max(0, (tr / 2) * (tr / 2) - det));
+      const l1 = tr / 2 + disc;
+      const l2 = tr / 2 - disc;
+      let angle;
+      if (Math.abs(sxy) > 1e-6) {
+        angle = Math.atan2(l1 - sxx, sxy);
+      } else {
+        angle = sxx >= syy ? 0 : Math.PI / 2;
+      }
+      // 2*sqrt(eigenvalue) ~ spread; scale + pad to wrap the cells.
+      const rx = Math.max(minR, 2 * Math.sqrt(Math.max(l1, 0)) * radiusScale + pad);
+      const ry = Math.max(minR, 2 * Math.sqrt(Math.max(l2, 0)) * radiusScale + pad);
+
+      const el = document.createElementNS(ns, "ellipse");
+      el.setAttribute("cx", "0");
+      el.setAttribute("cy", "0");
+      el.setAttribute("rx", rx.toFixed(2));
+      el.setAttribute("ry", ry.toFixed(2));
+      el.setAttribute("fill", fill);
+      el.setAttribute("stroke", stroke);
+      el.setAttribute("stroke-width", strokeWidth);
+      if (dash !== "none") el.setAttribute("stroke-dasharray", dash);
+      el.setAttribute("transform", `translate(${mx.toFixed(2)} ${my.toFixed(2)}) rotate(${(angle * 180 / Math.PI).toFixed(2)})`);
+      layer.appendChild(el);
+    }
+
+    contentGroup.appendChild(layer);
   }
 
   drawGroupOutlines(svg) {
@@ -941,6 +1100,82 @@ export class ScanConsensusDemo {
       partialA: tween > 0 ? 1 : 0,
       partialCount: Math.max(0, PARTIALS.length - hidden),
     };
+  }
+
+  // Slide 04: patients stay fixed; only the per-component purple ellipse outlines
+  // tighten. tween 0 = loosest, 1 = snug (approximating the final blob).
+  ellipseHoldState(tween = 0, opacity = 1) {
+    return {
+      ...this.geometryHoldState(),
+      hideCage: true,
+      drawBubbles: false,
+      drawEllipses: true,
+      ellipseTween: clamp(tween, 0, 1),
+      ellipseOpacity: clamp(opacity, 0, 1),
+    };
+  }
+
+  playEllipseBeat(targetTween, onComplete) {
+    this.stopPlay();
+    if (!this.host) {
+      if (onComplete) onComplete();
+      return;
+    }
+    const startTween = this.ellipseLevel ?? 0;
+    const duration = REDUCED ? 40 : 1400;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = easeInOut(clamp((now - start) / duration, 0, 1));
+      const tween = lerp(startTween, targetTween, t);
+      this.render({
+        ...this.ellipseHoldState(tween, 1),
+        singularScaffold: this.singularScaffold,
+        solidGrayPartials: this.solidGrayPartials,
+      });
+      if (t < 1) {
+        this.playRaf = requestAnimationFrame(tick);
+      } else {
+        this.playRaf = null;
+        this.ellipseLevel = targetTween;
+        this.state = { ...this.ellipseHoldState(targetTween, 1) };
+        if (onComplete) onComplete();
+      }
+    };
+    this.playRaf = requestAnimationFrame(tick);
+  }
+
+  // Final slide-04 beat: ellipses (snug) crossfade out while the real metaball
+  // blob from slide 03 fades in, so the end state matches slide 03 exactly.
+  playEllipseConvergeBeat(onComplete) {
+    this.stopPlay();
+    if (!this.host) {
+      if (onComplete) onComplete();
+      return;
+    }
+    const duration = REDUCED ? 40 : 1200;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = easeInOut(clamp((now - start) / duration, 0, 1));
+      this.render({
+        ...this.topologyHoldState(true),
+        hideCage: true,
+        drawEllipses: true,
+        ellipseTween: 1,
+        ellipseOpacity: 1 - t,
+        singularScaffold: this.singularScaffold,
+        solidGrayPartials: this.solidGrayPartials,
+      });
+      if (t < 1) {
+        this.playRaf = requestAnimationFrame(tick);
+      } else {
+        this.playRaf = null;
+        this.ellipseLevel = 1;
+        // Keep the in-flight melted SVG — re-rendering restarts the goo filter.
+        this.state = { ...this.topologyHoldState(true), hideCage: true };
+        if (onComplete) onComplete();
+      }
+    };
+    this.playRaf = requestAnimationFrame(tick);
   }
 
   playRefinementBeat(targetLevel, onComplete) {
