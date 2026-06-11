@@ -13,6 +13,7 @@ const DEMOS = [
 ];
 
 const byId = new Map(DEMOS.map((demo) => [demo.id, demo]));
+const phoneBlockerQuery = matchMedia("(max-width: 760px) and (pointer: coarse), (pointer: coarse) and (max-height: 560px)");
 
 const refs = {
   demoView: doc.querySelector("#demoView"),
@@ -196,5 +197,12 @@ addEventListener("hashchange", () => {
   }
 });
 
-// Boot the unified briefing immediately!
-void selectDemo("presentation");
+function bootPresentation() {
+  if (phoneBlockerQuery.matches || cur) return;
+  void selectDemo("presentation");
+}
+
+phoneBlockerQuery.addEventListener("change", bootPresentation);
+
+// Boot the unified briefing when the device can display it.
+bootPresentation();
