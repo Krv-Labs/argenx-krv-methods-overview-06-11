@@ -249,9 +249,9 @@ class UnifiedStoryDemo {
 
   getSlide4InputsMarkup(activePhase = this.slide4Phase) {
     const inputs = [
-      { id: 1, label: "Clinician feedback" },
-      { id: 2, label: "Trial Evidence" },
-      { id: 3, label: "Conversion Performance" },
+      { id: 1, label: "Trial Evidence", desc: "Public domain data seeds the shape" },
+      { id: 2, label: "Clinician Feedback", desc: "Expert intuition tightens the boundary" },
+      { id: 3, label: "Conversion Performance", desc: "Live signals lock it in" },
     ];
     return inputs
       .map((input) => {
@@ -269,9 +269,12 @@ class UnifiedStoryDemo {
               ? "var(--teal)"
               : "var(--muted)";
         return `
-          <button data-id="${input.id}" class="slide4-input-btn" style="display:flex;align-items:center;gap:10px;color:${color};background:none;border:none;padding:6px 8px;margin:0 -8px;font-family:inherit;text-align:left;cursor:pointer;width:calc(100% + 16px);outline:none;user-select:none;border-radius:4px;transition:background 0.2s ease, opacity 0.2s ease;" onmouseover="this.style.background='var(--rule)'" onmouseout="this.style.background='none'">
-            <span style="width:14px;font-weight:600;display:inline-block;text-align:center;">${marker}</span>
-            <span style="font-size:11px;font-weight:500;">${input.id}. ${input.label}</span>
+          <button data-id="${input.id}" class="slide4-input-btn" style="display:flex;align-items:flex-start;gap:10px;color:${color};background:none;border:none;padding:6px 8px;margin:0 -8px;font-family:inherit;text-align:left;cursor:pointer;width:calc(100% + 16px);outline:none;user-select:none;border-radius:4px;transition:background 0.2s ease, opacity 0.2s ease;" onmouseover="this.style.background='var(--rule)'" onmouseout="this.style.background='none'">
+            <span style="width:14px;font-weight:600;display:inline-block;text-align:center;flex-shrink:0;margin-top:1px;">${marker}</span>
+            <span style="display:flex;flex-direction:column;gap:2px;">
+              <span style="font-size:11px;font-weight:500;">${input.id}. ${input.label}</span>
+              <span style="font-size:10px;opacity:0.7;font-style:italic;">${input.desc}</span>
+            </span>
           </button>`;
       })
       .join("");
