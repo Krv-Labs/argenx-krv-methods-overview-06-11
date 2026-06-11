@@ -280,7 +280,7 @@ class UnifiedStoryDemo {
   getSlide4PhaseConfig() {
     return {
       kicker: "04 / 04 · Continuous Improvement",
-      title: "Shape is Intelligence.",
+      title: "Shape is intelligence.",
       body:
         "Pulsar learns who belongs in your trial. Clinicians review candidates; trial evidence and conversion performance tighten the shape with each round—fewer records off target, more patients who convert.",
       metrics: [],
@@ -301,7 +301,7 @@ class UnifiedStoryDemo {
       },
       {
         kicker: "02 / 04 · Threshold Problem",
-        title: "Why Filters Fail.",
+        title: "Why filters fail.",
         body: "A tight filter misses valid candidates. A loose filter creates overwhelming review burden. Adjust the slider to choose which failure mode dominates.",
         stepLabel: "Geometry",
         demo: "cube",
@@ -310,7 +310,7 @@ class UnifiedStoryDemo {
       },
       {
         kicker: "03 / 04 · Shape Detection",
-        title: "Thinking outside of a box.",
+        title: "Thinking outside the box.",
         body: "Instead of filtering records, Pulsar captures desired patient attributes in all of their complex glory.",
         stepLabel: "Topology",
         demo: "scan",

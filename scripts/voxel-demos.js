@@ -311,7 +311,7 @@ export class CubeThresholdDemo {
 
     this.api.updateDetails({
       kicker: "Rigid filters",
-      title: ["Start with every candidate.", "Filters carve the cube.", "Why Filters Fail"][this.stepIndex],
+      title: ["Start with every candidate.", "Filters carve the cube.", "Why filters fail."][this.stepIndex],
       body: [
         "The EHR pool begins as one undifferentiated block. No patient-level shape has been used.",
         "Each threshold removes a slab before anyone can inspect whether the excluded patients belonged.",
