@@ -205,6 +205,7 @@ class UnifiedStoryDemo {
         if (slide.metrics) {
           finalDetails.metrics = slide.metrics;
         }
+        finalDetails.citations = slide.citations ?? null;
         this.api.updateDetails(finalDetails);
       },
       toast: (msg) => this.api.toast(msg)
@@ -314,12 +315,21 @@ class UnifiedStoryDemo {
       {
         kicker: "03 / 04 · Shape Detection",
         title: "Thinking outside the box.",
-        body: "Instead of filtering records using thresholds, Pulsar detects complex patterns that connect ideal candidates and turns them into actioanable searches.",
+        body: "Instead of filtering records using thresholds, Pulsar detects complex patterns that connect ideal candidates and turns them into actionable searches.",
         stepLabel: "Topology",
         demo: "scan",
         stepIndex: 0,
         metrics: [],
-        hasAnimation: true
+        hasAnimation: true,
+        citations: {
+          highlight: "Algorithm currently being used by teams at Rady's Children Hospital — manuscript pending.",
+          papers: [
+            { venue: "Nature Energy 2025", title: "Pulsar Algorithm applied to Climate Change", url: "https://www.nature.com/articles/s41560-025-01871-0" },
+            { venue: "ICML 2025", title: "Geometric Data Quality Evaluation", url: "https://dl.acm.org/doi/10.5555/3780338.3780778" },
+            { venue: "ICML 2024", title: "Topological Representation Learning", url: "https://dl.acm.org/doi/10.5555/3692070.3694217" },
+            { venue: "NeurIPS 2023", title: "Shape Comparisons for Generative Models", url: "https://dl.acm.org/doi/10.5555/3666122.3668874" },
+          ],
+        },
       },
       {
         stepLabel: "Machine Learning",

@@ -22,6 +22,7 @@ const refs = {
   demoTitle: doc.querySelector("#demoTitle"),
   demoBody: doc.querySelector("#demoBody"),
   demoMetrics: doc.querySelector("#demoMetrics"),
+  demoCitations: doc.querySelector("#demoCitations"),
   modeLabel: doc.querySelector("#modeLabel"),
   stepLabel: doc.querySelector("#stepLabel"),
   btnSvg: doc.querySelector("#btnSvg"),
@@ -36,8 +37,21 @@ const refs = {
 let cur = null;
 let toastTimer = null;
 
+function buildCitationsHTML({ highlight, papers }) {
+  const paperItems = papers.map((p, i) => `
+    <li class="narrative-citations__item">
+      <span class="narrative-citations__venue">${p.venue}</span>
+      <a class="narrative-citations__link" href="${p.url}" target="_blank" rel="noopener noreferrer">[${i + 1}] ${p.title} ↗</a>
+    </li>`).join("");
+  return `
+    <div class="narrative-citations__header">The Receipts</div>
+    <div class="narrative-citations__highlight">${highlight}</div>
+    <ol class="narrative-citations__list">${paperItems}</ol>
+  `;
+}
+
 const api = {
-  updateDetails({ kicker, title, body, metrics = [], modeLabel, stepLabel }) {
+  updateDetails({ kicker, title, body, metrics = [], modeLabel, stepLabel, citations = null }) {
     refs.demoKicker.textContent = kicker;
     refs.demoKicker.hidden = !kicker;
     refs.demoTitle.textContent = title;
@@ -49,6 +63,13 @@ const api = {
         <div class="metric__label">${label}</div>
         <div class="metric__value">${val}</div>
       </div>`).join("") : "";
+    if (citations) {
+      refs.demoCitations.hidden = false;
+      refs.demoCitations.innerHTML = buildCitationsHTML(citations);
+    } else {
+      refs.demoCitations.hidden = true;
+      refs.demoCitations.innerHTML = "";
+    }
     const activeStep = stepLabel;
     const metaContainer = doc.querySelector(".topbar__meta");
     if (metaContainer) {
