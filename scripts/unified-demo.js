@@ -250,7 +250,7 @@ class UnifiedStoryDemo {
   getSlide4InputsMarkup(activePhase = this.slide4Phase) {
     const inputs = [
       { id: 1, label: "Clinician feedback" },
-      { id: 2, label: "New literature" },
+      { id: 2, label: "Trial Evidence" },
       { id: 3, label: "Conversion Performance" },
     ];
     return inputs
@@ -278,17 +278,13 @@ class UnifiedStoryDemo {
   }
 
   getSlide4PhaseConfig() {
-    const kicker = "04 / 04 · Continuous Improvement";
-    const title = "Learning The Best Shape";
-    const body = "Search is different across every site. We iteratively improve the shape of patients we are looking for and make site specific improvements to increase the doctors' productivity.";
-    const phases = [
-      { kicker, title, body, metrics: [] },
-      { kicker, title, body, metrics: [["Fit accuracy", "72%"]] },
-      { kicker, title, body, metrics: [["Fit accuracy", "84%"]] },
-      { kicker, title, body, metrics: [["Fit accuracy", "93%"]] },
-      { kicker, title, body, metrics: [["Fit accuracy", "100%"]] },
-    ];
-    return phases[this.slide4Phase];
+    return {
+      kicker: "04 / 04 · Continuous Improvement",
+      title: "Learning The Best Shape",
+      body:
+        "Trial-wide intelligence tells us who we're looking for; site-specific tuning tells us where to find them—so doctors spend less time reviewing the wrong charts.",
+      metrics: [],
+    };
   }
 
   getSlideConfig() {
@@ -551,7 +547,7 @@ class UnifiedStoryDemo {
         return this.slide3Phase < 2 || this.stepIndex < 3;
       }
       if (this.isSlide4()) {
-        return this.slide4Phase < 3;
+        return this.slide4Phase < 4;
       }
       return (hasAnim && !this.animPlayed) || this.stepIndex < 3;
     }
