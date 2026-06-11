@@ -187,6 +187,7 @@ class UnifiedStoryDemo {
     this.slide1Raf = null;
     this.animPlayed = false;
     this.slide3Phase = 0;
+    this.slide4Phase = 0;
 
     this.wrapperApi = {
       updateDetails: (details) => {
@@ -225,10 +226,77 @@ class UnifiedStoryDemo {
   set stepIndex(val) {
     if (val !== this._stepIndex) {
       this.slide3Phase = 0;
+      this.slide4Phase = 0;
       this.animPlayed = false;
       this.slide1Revealed = 0;
+      if (val === 3) {
+        this.scanDemo.refinementLevel = 0;
+      }
     }
     this._stepIndex = val;
+  }
+
+  getSlide4InputsMarkup(activePhase = this.slide4Phase) {
+    const inputs = [
+      { id: 1, label: "Clinical feedback" },
+      { id: 2, label: "New literature" },
+      { id: 3, label: "Conversion Rate Performance" },
+    ];
+    return inputs
+      .map((input) => {
+        const status =
+          input.id <= activePhase
+            ? "applied"
+            : input.id === activePhase + 1
+              ? "active"
+              : "pending";
+        const marker = status === "applied" ? "✓" : status === "active" ? "→" : "·";
+        const color =
+          status === "applied"
+            ? "var(--green)"
+            : status === "active"
+              ? "var(--teal)"
+              : "var(--muted)";
+        return `
+          <button data-id="${input.id}" class="slide4-input-btn" style="display:flex;align-items:center;gap:10px;color:${color};background:none;border:none;padding:6px 8px;margin:0 -8px;font-family:inherit;text-align:left;cursor:pointer;width:calc(100% + 16px);outline:none;user-select:none;border-radius:4px;transition:background 0.2s ease, opacity 0.2s ease;" onmouseover="this.style.background='var(--rule)'" onmouseout="this.style.background='none'">
+            <span style="width:14px;font-weight:600;display:inline-block;text-align:center;">${marker}</span>
+            <span style="font-size:11px;font-weight:500;">${input.id}. ${input.label}</span>
+          </button>`;
+      })
+      .join("");
+  }
+
+  getSlide4PhaseConfig() {
+    const kicker = "04 / 04 · Continuous Improvement";
+    const title = "Learning The Best Shape";
+    const body = "Search is different across every site. We iteratively improve the shape of patients we are looking for and make site specific improvements to increase the doctors' productivity.";
+    const phases = [
+      {
+        kicker,
+        title,
+        body,
+        metrics: [["Precision", "78%"], ["Review", "4.2 hrs"]],
+      },
+      {
+        kicker,
+        title,
+        body,
+        metrics: [["Precision", "86%"], ["Review", "3.1 hrs"]],
+      },
+      {
+        kicker,
+        title,
+        body,
+        metrics: [["Precision", "92%"], ["Review", "2.0 hrs"]],
+      },
+      {
+        kicker,
+        title,
+        body,
+        metrics: [["Precision", "96%"], ["Review", "1.4 hrs"]],
+      },
+    ];
+    return phases[this.slide4Phase];
   }
 
   getSlideConfig() {
@@ -263,20 +331,15 @@ class UnifiedStoryDemo {
         hasAnimation: true
       },
       {
-        kicker: "04 / 04 · Compare",
-        title: "The best threshold box still clips the shape.",
-        body: "The red frame is the optimal threshold block from prior steps. It still misses part of the discovered cohort.",
         stepLabel: "Machine Learning",
         demo: "scan",
         stepIndex: 2,
-        metrics: [
-          ["Consensus cells", "33"],
-          ["Missed by box", "42"],
-          ["Cells destroyed", "0"]
-        ],
-        hasAnimation: false
-      }
+        hasAnimation: false,
+      },
     ];
+    if (this.stepIndex === 3) {
+      return { ...slides[3], ...this.getSlide4PhaseConfig() };
+    }
     return slides[this.stepIndex];
   }
 
@@ -309,6 +372,84 @@ class UnifiedStoryDemo {
     return this.stepIndex === 2;
   }
 
+  isSlide4() {
+    return this.stepIndex === 3;
+  }
+
+  playSlide4Phase(phase) {
+    this.ensureSlide4Host();
+    const onComplete = () => {
+      this.slide4Phase = phase;
+      this.updateSlide4Panel();
+    };
+    this.scanDemo.playRefinementBeat(phase, onComplete);
+  }
+
+  ensureSlide4Host() {
+    if (!this.scanDemo.host || !this.stageHost.contains(this.scanDemo.host)) {
+      this.scanDemo.host = document.createElement("div");
+      this.scanDemo.host.className = "graphic-host graphic-host--bob";
+      this.stageHost.replaceChildren(this.scanDemo.host);
+    }
+  }
+
+  updateSlide4Panel() {
+    const config = this.getSlideConfig();
+    this.api.updateDetails({
+      kicker: config.kicker,
+      title: config.title,
+      body: config.body,
+      metrics: config.metrics,
+      stepLabel: config.stepLabel,
+      modeLabel: "Pulsar Interactive Briefing",
+    });
+    const inputsHost = this.controlsHost.querySelector("#slide4Inputs");
+    if (inputsHost) {
+      inputsHost.innerHTML = this.getSlide4InputsMarkup(this.slide4Phase);
+    }
+  }
+
+  renderSlide4Controls() {
+    const group = document.createElement("div");
+    group.className = "control-group";
+    group.style.cssText =
+      "padding:16px;display:flex;flex-direction:column;gap:14px;background:var(--panel);box-shadow:var(--shadow-border);";
+    group.innerHTML = `
+      <div class="control-label" style="font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:var(--muted);border-bottom:1px solid var(--rule);padding-bottom:8px;">
+        Inputs that refine the model
+      </div>
+      <div id="slide4Inputs" style="display:flex;flex-direction:column;gap:10px;margin-top:4px;"></div>
+      <p style="font-size:10px;color:var(--muted);margin:0;line-height:1.5;">Click any input to toggle feedback, or use Next to apply sequentially.</p>
+    `;
+    this.controlsHost.replaceChildren(group);
+    const inputsHost = group.querySelector("#slide4Inputs");
+    if (inputsHost) {
+      inputsHost.innerHTML = this.getSlide4InputsMarkup(this.slide4Phase);
+      
+      inputsHost.addEventListener("click", (e) => {
+        const btn = e.target.closest(".slide4-input-btn");
+        if (!btn) return;
+        const id = parseInt(btn.getAttribute("data-id"), 10);
+        let targetPhase;
+        if (this.slide4Phase >= id) {
+          targetPhase = id - 1;
+        } else {
+          targetPhase = id;
+        }
+        
+        if (targetPhase > this.slide4Phase) {
+          this.playSlide4Phase(targetPhase);
+        } else if (targetPhase < this.slide4Phase) {
+          this.slide4Phase = targetPhase;
+          this.scanDemo.refinementLevel = targetPhase;
+          this.stopSlideAnimations();
+          this.render();
+          this.updateSlide4Panel();
+        }
+      });
+    }
+  }
+
   playSlide3Phase(phase) {
     const onComplete = () => {
       this.slide3Phase = phase;
@@ -338,8 +479,14 @@ class UnifiedStoryDemo {
           this.playSlide3Phase(2);
         } else if (this.stepIndex < 3) {
           this.stepIndex++;
+          this.slide4Phase = 0;
+          this.scanDemo.refinementLevel = 0;
           this.stopSlideAnimations();
           this.render();
+        }
+      } else if (this.isSlide4()) {
+        if (this.slide4Phase < 3) {
+          this.playSlide4Phase(this.slide4Phase + 1);
         }
       } else if (hasAnim && !this.animPlayed) {
         this.animPlayed = true;
@@ -348,6 +495,18 @@ class UnifiedStoryDemo {
         this.stepIndex++;
         this.animPlayed = false;
         this.slide1Revealed = 0;
+        this.stopSlideAnimations();
+        this.render();
+      }
+    } else if (this.isSlide4()) {
+      if (this.slide4Phase > 0) {
+        this.slide4Phase--;
+        this.scanDemo.refinementLevel = this.slide4Phase;
+        this.stopSlideAnimations();
+        this.render();
+        this.updateSlide4Panel();
+      } else if (this.stepIndex > 0) {
+        this.stepIndex--;
         this.stopSlideAnimations();
         this.render();
       }
@@ -386,7 +545,13 @@ class UnifiedStoryDemo {
       if (this.isSlide3()) {
         return this.slide3Phase < 2 || this.stepIndex < 3;
       }
+      if (this.isSlide4()) {
+        return this.slide4Phase < 3;
+      }
       return (hasAnim && !this.animPlayed) || this.stepIndex < 3;
+    }
+    if (this.isSlide4()) {
+      return this.slide4Phase > 0 || this.stepIndex > 0;
     }
     if (this.isSlide3()) {
       return this.slide3Phase > 0 || this.stepIndex > 0;
@@ -445,8 +610,10 @@ class UnifiedStoryDemo {
           `;
           this.controlsHost.replaceChildren(legend);
         }
+      } else if (this.stepIndex === 3) {
+        this.renderSlide4Controls();
       } else if (this.stepIndex === 2) {
-        this.controlsHost.replaceChildren(); // Completely empty left controls panel for Slide 3!
+        this.controlsHost.replaceChildren();
       } else {
         const emptyControls = document.createElement("div");
         emptyControls.className = "control-group";
@@ -454,9 +621,11 @@ class UnifiedStoryDemo {
         this.controlsHost.replaceChildren(emptyControls);
       }
       
-      demo.host = document.createElement("div");
-      demo.host.className = "graphic-host graphic-host--bob";
-      this.stageHost.replaceChildren(demo.host);
+      if (!(this.stepIndex === 3 && demo.host && this.stageHost.contains(demo.host))) {
+        demo.host = document.createElement("div");
+        demo.host.className = "graphic-host graphic-host--bob";
+        this.stageHost.replaceChildren(demo.host);
+      }
       if (this.stepIndex === 0) {
         demo.render({ hideCage: true, lit: 1, partialA: 1, plane: null, redBox: false, slide1Revealed: this.slide1Revealed });
       } else if (this.stepIndex === 2) {
@@ -467,6 +636,17 @@ class UnifiedStoryDemo {
         } else {
           demo.render();
         }
+      } else if (this.stepIndex === 3) {
+        this.ensureSlide4Host();
+        const hold =
+          this.slide4Phase === 0
+            ? { ...this.scanDemo.topologyHoldState(true), hideCage: true }
+            : this.scanDemo.refinementHoldState(this.slide4Phase, true);
+        demo.render({
+          ...hold,
+          singularScaffold: true,
+          solidGrayPartials: true,
+        });
       } else {
         demo.render();
       }

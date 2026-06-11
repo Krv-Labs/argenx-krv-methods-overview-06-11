@@ -463,6 +463,13 @@ export class CubeThresholdDemo {
 
 const ROLE_CARD = { core: "core", flare: "flare", satellite: "satellite", outlier: "outlier" };
 
+function refinementHiddenPartials(tween) {
+  if (tween <= 0) return 0;
+  if (tween <= 1) return tween;
+  if (tween <= 2) return 1 + (tween - 1) * 2;
+  return Math.min(PARTIALS.length, 3 + (tween - 2) * (PARTIALS.length - 3));
+}
+
 export class ScanConsensusDemo {
   static id = "scan-consensus";
   static title = "Non-destructive scans";
@@ -478,6 +485,7 @@ export class ScanConsensusDemo {
     this.singularScaffold = false;
     this.solidGrayPartials = false;
     this.playRaf = null;
+    this.refinementLevel = 0;
   }
 
   mount(stageHost, controlsHost) {
@@ -635,28 +643,26 @@ export class ScanConsensusDemo {
       }
 
       let scale = 1.0;
-      if (st.dismorphProgress !== undefined && st.dismorphProgress > 0) {
-        const p = st.dismorphProgress;
-        
-        // 1. Position offsets (drifting / splitting)
+      if (st.refinementTween !== undefined && st.refinementTween > 0) {
+        const r = st.refinementTween;
+        const l1 = clamp(r, 0, 1);
+        const l2 = clamp(r - 1, 0, 1);
+        const l3 = clamp(r - 2, 0, 1);
+
         if (role === "flare") {
-          x += (x - 6) * 0.45 * p;
-          z += (z - 6) * 0.45 * p;
+          x -= (x - 6) * 0.38 * l1;
+          z -= (z - 6) * 0.38 * l1;
+          x -= (x - 6) * 0.24 * l2;
+          z -= (z - 6) * 0.24 * l2;
         } else if (role === "satellite") {
-          x += (x - 2.5) * 0.3 * p;
-          z += (z - 3.2) * 0.3 * p;
-        }
-        
-        // 2. Scale adjustments (holes appearing & shrinking)
-        if (role === "core") {
-          const distToCenter = Math.sqrt((x - 6) ** 2 + (z - 6) ** 2);
-          if (distToCenter < 1.2) {
-            scale = Math.max(0, 1 - p * 2.2);
-          }
-        } else if (role === "satellite") {
-          scale = Math.max(0.1, 1 - p * 0.7);
+          x -= (x - 6) * 0.55 * l3;
+          z -= (z - 6) * 0.55 * l3;
         } else if (role === "outlier") {
-          scale = Math.max(0, 1 - p);
+          scale = Math.max(0, 1 - l3);
+        }
+
+        if (strong && l2 > 0) {
+          fill = `rgba(13,126,143,${(0.92 + 0.08 * l2).toFixed(3)})`;
         }
       }
 
@@ -924,6 +930,52 @@ export class ScanConsensusDemo {
     };
   }
 
+  refinementHoldState(level = 0, frozen = true, tweenOverride) {
+    const tween = tweenOverride !== undefined ? tweenOverride : level;
+    const hidden = refinementHiddenPartials(tween);
+    return {
+      ...this.topologyHoldState(frozen),
+      refinementTween: tween,
+      meltComplete: true,
+      hideCage: true,
+      partialA: tween > 0 ? 1 : 0,
+      partialCount: Math.max(0, PARTIALS.length - hidden),
+    };
+  }
+
+  playRefinementBeat(targetLevel, onComplete) {
+    this.stopPlay();
+    if (!this.host) {
+      if (onComplete) onComplete();
+      return;
+    }
+    if (!this.host.querySelector("svg")) {
+      this.render({ ...this.topologyHoldState(true), hideCage: true });
+    }
+    const startLevel = this.refinementLevel;
+    const duration = REDUCED ? 40 : 1400;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = easeInOut(clamp((now - start) / duration, 0, 1));
+      const tween = lerp(startLevel, targetLevel, t);
+      this.render({
+        ...this.refinementHoldState(targetLevel, true, tween),
+        singularScaffold: this.singularScaffold,
+        solidGrayPartials: this.solidGrayPartials,
+      });
+      if (t < 1) {
+        this.playRaf = requestAnimationFrame(tick);
+      } else {
+        this.playRaf = null;
+        this.refinementLevel = targetLevel;
+        // Keep the in-flight SVG — re-rendering would restart the goo filter.
+        this.state = { ...this.refinementHoldState(targetLevel, true) };
+        if (onComplete) onComplete();
+      }
+    };
+    this.playRaf = requestAnimationFrame(tick);
+  }
+
   renderGeometryFrame(phase) {
     if (phase < 0.4) {
       const u = phase / 0.4;
@@ -1011,9 +1063,6 @@ export class ScanConsensusDemo {
           return this.renderGeometryFrame(phase / 0.95);
         }
         return this.render({ ...this.geometryHoldState(), drawBubbles: phase >= 0.99 });
-      } else if (this.stepIndex === 2) {
-        // Slide 4 Animation: Stay in flat 2D view and smoothly dismorph the manifold
-        return this.render({ plane: null, lit: 1, partialA: 0, redBox: false, camera: { angle: 0, pitch: 85 }, drawBubbles: true, dismorphProgress: phase });
       }
     }
 
