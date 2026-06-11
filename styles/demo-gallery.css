@@ -58,11 +58,7 @@ button {
   display: grid;
   height: 100vh;
   grid-template-rows: 58px 1fr;
-  background:
-    linear-gradient(rgba(32, 35, 51, 0.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(32, 35, 51, 0.035) 1px, transparent 1px),
-    var(--paper);
-  background-size: 26px 26px;
+  background: var(--paper);
 }
 
 .topbar {
