@@ -220,7 +220,7 @@ class UnifiedStoryDemo {
         kicker: "",
         title: "Every cube represents a patient.",
         body: "Each cube should be thought of as a patient in the EHR. The task? Determine which patients are good candidates for a clinical trial.",
-        stepLabel: "Space",
+        stepLabel: "Topology",
         demo: "scan",
         stepIndex: 1,
         metrics: [],
@@ -230,7 +230,7 @@ class UnifiedStoryDemo {
         kicker: "02 / 04 · Threshold Problem",
         title: "Why Filters Fail",
         body: "A tight filter misses valid candidates. A loose filter creates overwhelming review burden. Adjust the slider to choose which failure mode dominates.",
-        stepLabel: "Thresholds",
+        stepLabel: "Geometry",
         demo: "cube",
         stepIndex: 2,
         hasAnimation: false
@@ -239,7 +239,7 @@ class UnifiedStoryDemo {
         kicker: "03 / 04 · Non-destructive Scan",
         title: "Thinking outside of a box.",
         body: "Instead of filtering records, Pulsar captures desired patient attributes in all of their complex glory.",
-        stepLabel: "Scans",
+        stepLabel: "Geometry",
         demo: "scan",
         stepIndex: 0,
         metrics: [],
@@ -249,7 +249,7 @@ class UnifiedStoryDemo {
         kicker: "04 / 04 · Compare",
         title: "The best threshold box still clips the shape.",
         body: "The red frame is the optimal threshold block from prior steps. It still misses part of the discovered cohort.",
-        stepLabel: "Compare",
+        stepLabel: "Machine Learning",
         demo: "scan",
         stepIndex: 2,
         metrics: [
@@ -350,7 +350,7 @@ class UnifiedStoryDemo {
       }
     }
 
-    if (config.stepLabel === "Space" || config.stepLabel === "Filters" || config.stepLabel === "Scans" || config.stepLabel === "Consensus" || config.stepLabel === "Compare" || config.stepLabel === "Lift" || config.stepLabel === "Manifold") {
+    if ((config.stepLabel === "Space" || config.stepLabel === "Filters" || config.stepLabel === "Scans" || config.stepLabel === "Consensus" || config.stepLabel === "Compare" || config.stepLabel === "Lift" || config.stepLabel === "Manifold" || config.stepLabel === "Topology" || config.stepLabel === "Geometry" || config.stepLabel === "Machine Learning") && config.demo !== "cube") {
       if (this.stepIndex === 0) {
         if (this.slide1Revealed === 0) {
           this.controlsHost.replaceChildren(); // Completely empty left controls panel initially

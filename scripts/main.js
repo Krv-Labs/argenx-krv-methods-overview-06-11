@@ -49,8 +49,17 @@ const api = {
         <div class="metric__label">${label}</div>
         <div class="metric__value">${val}</div>
       </div>`).join("") : "";
-    refs.modeLabel.textContent = modeLabel;
-    refs.stepLabel.textContent = stepLabel;
+    const activeStep = stepLabel;
+    const metaContainer = doc.querySelector(".topbar__meta");
+    if (metaContainer) {
+      metaContainer.innerHTML = `
+        <span class="topbar-step ${activeStep === "Topology" ? "active" : ""}">Topology</span>
+        <span class="topbar-sep">·</span>
+        <span class="topbar-step ${activeStep === "Geometry" ? "active" : ""}">Geometry</span>
+        <span class="topbar-sep">·</span>
+        <span class="topbar-step ${activeStep === "Machine Learning" ? "active" : ""}">Machine Learning</span>
+      `;
+    }
     updateNav();
   },
   toast(msg) {

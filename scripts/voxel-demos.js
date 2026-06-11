@@ -488,10 +488,9 @@ export class ScanConsensusDemo {
     group.innerHTML = `
       <div class="control-row"><span class="control-label">Read mode</span><span class="control-value">Non-destructive</span></div>
       <div class="choice-row">
-        <button class="choice-button" data-scan-step="0" type="button">Scan</button>
-        <button class="choice-button" data-scan-step="1" type="button">Consensus</button>
-        <button class="choice-button" data-scan-step="2" type="button">Compare</button>
-        <button class="choice-button" data-scan-step="3" type="button">Lift</button>
+        <button class="choice-button" data-scan-step="0" type="button">Topology</button>
+        <button class="choice-button" data-scan-step="1" type="button">Geometry</button>
+        <button class="choice-button" data-scan-step="2" type="button">Machine Learning</button>
       </div>`;
     controlsHost.replaceChildren(group);
     group.querySelectorAll("[data-scan-step]").forEach((button) => {
@@ -504,16 +503,16 @@ export class ScanConsensusDemo {
   }
 
   step(delta) {
-    this.stepIndex = clamp(this.stepIndex + delta, 0, 3);
+    this.stepIndex = clamp(this.stepIndex + delta, 0, 2);
     this.render();
   }
 
   canStep(delta) {
-    return this.stepIndex + delta >= 0 && this.stepIndex + delta <= 3;
+    return this.stepIndex + delta >= 0 && this.stepIndex + delta <= 2;
   }
 
   get stepName() {
-    return ["Scan", "Consensus", "Compare", "Lift"][this.stepIndex];
+    return ["Topology", "Geometry", "Machine Learning"][this.stepIndex];
   }
 
   updateCopy() {
