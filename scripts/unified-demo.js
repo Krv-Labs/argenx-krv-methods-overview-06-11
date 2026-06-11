@@ -231,22 +231,27 @@ class UnifiedStoryDemo {
       this.slide1Revealed = 0;
       if (val === 3) {
         this.scanDemo.refinementLevel = 0;
-        this.scanDemo.ellipseLevel = 0;
+        this.scanDemo.ellipseLevel = null;
       }
     }
     this._stepIndex = val;
   }
 
-  slide4Tween(phase) {
-    // phases 0,1,2 -> loose ... snug ellipses; phase 3 = converged metaball.
-    return [0, 0.5, 1][Math.min(2, Math.max(0, phase))];
+  slide4BlobTween(phase) {
+    // phases 1–3 -> loose … snug scaled blob; phase 0 = cubes only; phase 4 = metaball.
+    if (phase <= 0 || phase >= 4) return 0;
+    return [0, 0.5, 1][phase - 1];
+  }
+
+  slide4ShowBlob(phase) {
+    return phase >= 1 && phase < 4;
   }
 
   getSlide4InputsMarkup(activePhase = this.slide4Phase) {
     const inputs = [
-      { id: 1, label: "Clinical feedback" },
+      { id: 1, label: "Clinician feedback" },
       { id: 2, label: "New literature" },
-      { id: 3, label: "Conversion Rate Performance" },
+      { id: 3, label: "Conversion Performance" },
     ];
     return inputs
       .map((input) => {
@@ -277,6 +282,7 @@ class UnifiedStoryDemo {
     const title = "Learning The Best Shape";
     const body = "Search is different across every site. We iteratively improve the shape of patients we are looking for and make site specific improvements to increase the doctors' productivity.";
     const phases = [
+      { kicker, title, body, metrics: [] },
       { kicker, title, body, metrics: [["Fit accuracy", "72%"]] },
       { kicker, title, body, metrics: [["Fit accuracy", "84%"]] },
       { kicker, title, body, metrics: [["Fit accuracy", "93%"]] },
@@ -368,11 +374,17 @@ class UnifiedStoryDemo {
       this.slide4Phase = phase;
       this.updateSlide4Panel();
     };
-    if (phase >= 3) {
-      // Final beat: snug ellipses crossfade into the slide-03 metaball blob.
+    if (phase >= 4) {
       this.scanDemo.playEllipseConvergeBeat(onComplete);
+    } else if (phase === 0) {
+      this.scanDemo.ellipseLevel = null;
+      this.stopSlideAnimations();
+      this.render();
+      onComplete();
+    } else if (this.slide4Phase === 0) {
+      this.scanDemo.playBlobAppearBeat(onComplete);
     } else {
-      this.scanDemo.playEllipseBeat(this.slide4Tween(phase), onComplete);
+      this.scanDemo.playEllipseBeat(this.slide4BlobTween(phase), onComplete);
     }
   }
 
@@ -432,7 +444,7 @@ class UnifiedStoryDemo {
           this.playSlide4Phase(targetPhase);
         } else if (targetPhase < this.slide4Phase) {
           this.slide4Phase = targetPhase;
-          this.scanDemo.ellipseLevel = this.slide4Tween(targetPhase);
+          this.scanDemo.ellipseLevel = targetPhase === 0 ? null : this.slide4BlobTween(targetPhase);
           this.stopSlideAnimations();
           this.render();
           this.updateSlide4Panel();
@@ -472,12 +484,12 @@ class UnifiedStoryDemo {
           this.stepIndex++;
           this.slide4Phase = 0;
           this.scanDemo.refinementLevel = 0;
-          this.scanDemo.ellipseLevel = 0;
+          this.scanDemo.ellipseLevel = null;
           this.stopSlideAnimations();
           this.render();
         }
       } else if (this.isSlide4()) {
-        if (this.slide4Phase < 3) {
+        if (this.slide4Phase < 4) {
           this.playSlide4Phase(this.slide4Phase + 1);
         }
       } else if (hasAnim && !this.animPlayed) {
@@ -493,7 +505,8 @@ class UnifiedStoryDemo {
     } else if (this.isSlide4()) {
       if (this.slide4Phase > 0) {
         this.slide4Phase--;
-        this.scanDemo.ellipseLevel = this.slide4Tween(this.slide4Phase);
+        this.scanDemo.ellipseLevel =
+          this.slide4Phase === 0 ? null : this.slide4BlobTween(this.slide4Phase);
         this.stopSlideAnimations();
         this.render();
         this.updateSlide4Panel();
@@ -631,9 +644,11 @@ class UnifiedStoryDemo {
       } else if (this.stepIndex === 3) {
         this.ensureSlide4Host();
         const hold =
-          this.slide4Phase >= 3
+          this.slide4Phase >= 4
             ? { ...this.scanDemo.topologyHoldState(true), hideCage: true }
-            : this.scanDemo.ellipseHoldState(this.slide4Tween(this.slide4Phase), 1);
+            : this.slide4Phase === 0
+              ? { ...this.scanDemo.geometryHoldState(), hideCage: true }
+              : this.scanDemo.ellipseHoldState(this.slide4BlobTween(this.slide4Phase), 1);
         demo.render({
           ...hold,
           singularScaffold: true,

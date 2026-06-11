@@ -813,10 +813,17 @@ export class ScanConsensusDemo {
       }
     }
 
-    if (st.drawEllipses) {
+    if (st.drawBlobApprox || st.drawEllipses) {
       const svg = this.host.querySelector("svg");
       if (svg) {
-        this.drawComponentEllipses(svg, st.ellipseTween ?? 0, st.ellipseOpacity ?? 1);
+        const overlayOpacity = st.blobOpacity ?? st.ellipseOpacity ?? 1;
+        if (overlayOpacity > 0.001) {
+          this.drawBlobApproxOverlay(
+            svg,
+            st.blobTween ?? st.ellipseTween ?? 0,
+            overlayOpacity,
+          );
+        }
       }
     }
 
@@ -824,16 +831,17 @@ export class ScanConsensusDemo {
     return this.getSvg();
   }
 
-  // Slide 04: fit one loose purple ellipse per connected component of the fixed
-  // target patients. tween 0 = loose/oversized dashed outline, 1 = snug solid
-  // outline that approximates the final metaball blob. opacity scales the whole
-  // overlay for the crossfade into the real blob on the final beat.
-  drawComponentEllipses(svg, tween, opacity = 1) {
+  // Slide 04: scaled-up copy of the final purple metaball (same goo filter as slide 03).
+  // tween 0 = loose oversized blob, 1 = exact target size. opacity scales the overlay
+  // for the crossfade into the real melted blob on the final beat.
+  drawBlobApproxOverlay(svg, tween, opacity = 1) {
     if (opacity <= 0.001) return;
 
-    // Heerich wraps faces in nested per-voxel transformed groups, so getBBox is
-    // not comparable across cells. Use screen-space rects mapped back into the
-    // content group's user space via the inverse CTM.
+    const targetSel =
+      '[data-id="core"], [data-id="flare"], [data-id="satellite"], [data-id="outlier"]';
+    const targets = svg.querySelectorAll(targetSel);
+    if (!targets.length) return;
+
     const contentGroup = svg.querySelector("g") || svg;
     const ctm = contentGroup.getScreenCTM ? contentGroup.getScreenCTM() : null;
     if (!ctm) return;
@@ -850,94 +858,61 @@ export class ScanConsensusDemo {
       return [p.x, p.y];
     };
 
-    const groups = new Map();
-    const cellSizes = [];
-    svg.querySelectorAll("[data-comp]").forEach((node) => {
-      const key = node.getAttribute("data-comp");
+    let cx = 0;
+    let cy = 0;
+    let n = 0;
+    targets.forEach((node) => {
       const r = node.getBoundingClientRect();
       if (!r || (r.width === 0 && r.height === 0)) return;
-      const [cx, cy] = toUser(r.left + r.width / 2, r.top + r.height / 2);
-      const [ux0, uy0] = toUser(r.left, r.top);
-      const [ux1, uy1] = toUser(r.right, r.bottom);
-      cellSizes.push(Math.max(Math.abs(ux1 - ux0), Math.abs(uy1 - uy0)));
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push([cx, cy]);
+      const [ux, uy] = toUser(r.left + r.width / 2, r.top + r.height / 2);
+      cx += ux;
+      cy += uy;
+      n++;
     });
-    if (groups.size === 0) return;
-
-    // Characteristic cell size in user space so padding scales with the view.
-    cellSizes.sort((a, b) => a - b);
-    const cellU = cellSizes[Math.floor(cellSizes.length / 2)] || 12;
+    if (n === 0) return;
+    cx /= n;
+    cy /= n;
 
     const t = clamp(tween, 0, 1);
-    // Loose -> snug. Loose state is clearly oversized and rounded; snug state
-    // hugs the cells. Pad keeps single-cell clusters visible.
-    const radiusScale = lerp(1.6, 1.05, t);
-    const pad = cellU * lerp(1.15, 0.45, t);
-    const minR = cellU * lerp(1.95, 0.95, t);
-    const dash = t < 0.92 ? `${(cellU * 0.3).toFixed(1)} ${(cellU * lerp(0.5, 0.22, t)).toFixed(1)}` : "none";
-    const stroke = "rgba(110,27,130,0.95)";
-    const fill = `rgba(156,39,184,${(0.05 + 0.07 * t).toFixed(3)})`;
-    const strokeWidth = (cellU * lerp(0.13, 0.16, t)).toFixed(2);
+    const BLOB_TUNING = { scale: [1.48, 1.0], opacity: [0.58, 0.82] };
+    const blobScale = lerp(BLOB_TUNING.scale[0], BLOB_TUNING.scale[1], t);
+    const layerOpacity =
+      lerp(BLOB_TUNING.opacity[0], BLOB_TUNING.opacity[1], t) * clamp(opacity, 0, 1);
+
+    const filterId = "gooey-blob-approx";
+    if (!svg.querySelector(`#${filterId}`)) {
+      const purpleGoo =
+        "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10";
+      const purpleOutline =
+        "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0";
+      svg.insertAdjacentHTML(
+        "afterbegin",
+        `<defs>
+          <filter id="${filterId}" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+            <feColorMatrix in="blur" mode="matrix" values="${purpleGoo}" result="goo" />
+            <feMorphology in="goo" operator="dilate" radius="1.0" result="dilated" />
+            <feComposite in="dilated" in2="goo" operator="out" result="rawOutline" />
+            <feColorMatrix in="rawOutline" mode="matrix" result="coloredOutline" values="${purpleOutline}" />
+            <feComposite in="coloredOutline" in2="goo" operator="over" />
+          </filter>
+        </defs>`,
+      );
+    }
 
     const ns = "http://www.w3.org/2000/svg";
     const layer = document.createElementNS(ns, "g");
-    layer.setAttribute("data-ellipse-layer", "1");
-    layer.setAttribute("opacity", String(clamp(opacity, 0, 1)));
+    layer.setAttribute("data-blob-approx-layer", "1");
+    layer.setAttribute("opacity", String(layerOpacity));
+    layer.setAttribute(
+      "transform",
+      `translate(${cx.toFixed(2)} ${cy.toFixed(2)}) scale(${blobScale.toFixed(4)}) translate(${(-cx).toFixed(2)} ${(-cy).toFixed(2)})`,
+    );
+    layer.setAttribute("filter", `url(#${filterId})`);
 
-    for (const pts of groups.values()) {
-      const n = pts.length;
-      let mx = 0;
-      let my = 0;
-      for (const [x, y] of pts) {
-        mx += x;
-        my += y;
-      }
-      mx /= n;
-      my /= n;
-
-      // 2x2 covariance -> principal axes (eigen-decomposition of symmetric mat).
-      let sxx = 0;
-      let syy = 0;
-      let sxy = 0;
-      for (const [x, y] of pts) {
-        const dx = x - mx;
-        const dy = y - my;
-        sxx += dx * dx;
-        syy += dy * dy;
-        sxy += dx * dy;
-      }
-      sxx /= n;
-      syy /= n;
-      sxy /= n;
-
-      const tr = sxx + syy;
-      const det = sxx * syy - sxy * sxy;
-      const disc = Math.sqrt(Math.max(0, (tr / 2) * (tr / 2) - det));
-      const l1 = tr / 2 + disc;
-      const l2 = tr / 2 - disc;
-      let angle;
-      if (Math.abs(sxy) > 1e-6) {
-        angle = Math.atan2(l1 - sxx, sxy);
-      } else {
-        angle = sxx >= syy ? 0 : Math.PI / 2;
-      }
-      // 2*sqrt(eigenvalue) ~ spread; scale + pad to wrap the cells.
-      const rx = Math.max(minR, 2 * Math.sqrt(Math.max(l1, 0)) * radiusScale + pad);
-      const ry = Math.max(minR, 2 * Math.sqrt(Math.max(l2, 0)) * radiusScale + pad);
-
-      const el = document.createElementNS(ns, "ellipse");
-      el.setAttribute("cx", "0");
-      el.setAttribute("cy", "0");
-      el.setAttribute("rx", rx.toFixed(2));
-      el.setAttribute("ry", ry.toFixed(2));
-      el.setAttribute("fill", fill);
-      el.setAttribute("stroke", stroke);
-      el.setAttribute("stroke-width", strokeWidth);
-      if (dash !== "none") el.setAttribute("stroke-dasharray", dash);
-      el.setAttribute("transform", `translate(${mx.toFixed(2)} ${my.toFixed(2)}) rotate(${(angle * 180 / Math.PI).toFixed(2)})`);
-      layer.appendChild(el);
-    }
+    targets.forEach((node) => {
+      layer.appendChild(node.cloneNode(true));
+    });
 
     contentGroup.appendChild(layer);
   }
@@ -1102,17 +1077,44 @@ export class ScanConsensusDemo {
     };
   }
 
-  // Slide 04: patients stay fixed; only the per-component purple ellipse outlines
-  // tighten. tween 0 = loosest, 1 = snug (approximating the final blob).
+  // Slide 04: patients stay fixed; a scaled purple metaball overlay tightens toward
+  // the final blob. tween 0 = loosest (largest), 1 = exact target size.
   ellipseHoldState(tween = 0, opacity = 1) {
     return {
       ...this.geometryHoldState(),
       hideCage: true,
       drawBubbles: false,
-      drawEllipses: true,
+      drawBlobApprox: true,
       ellipseTween: clamp(tween, 0, 1),
       ellipseOpacity: clamp(opacity, 0, 1),
     };
+  }
+
+  playBlobAppearBeat(onComplete) {
+    this.stopPlay();
+    if (!this.host) {
+      if (onComplete) onComplete();
+      return;
+    }
+    const duration = REDUCED ? 40 : 1200;
+    const start = performance.now();
+    const tick = (now) => {
+      const t = easeInOut(clamp((now - start) / duration, 0, 1));
+      this.render({
+        ...this.ellipseHoldState(0, t),
+        singularScaffold: this.singularScaffold,
+        solidGrayPartials: this.solidGrayPartials,
+      });
+      if (t < 1) {
+        this.playRaf = requestAnimationFrame(tick);
+      } else {
+        this.playRaf = null;
+        this.ellipseLevel = 0;
+        this.state = { ...this.ellipseHoldState(0, 1) };
+        if (onComplete) onComplete();
+      }
+    };
+    this.playRaf = requestAnimationFrame(tick);
   }
 
   playEllipseBeat(targetTween, onComplete) {
@@ -1144,8 +1146,8 @@ export class ScanConsensusDemo {
     this.playRaf = requestAnimationFrame(tick);
   }
 
-  // Final slide-04 beat: ellipses (snug) crossfade out while the real metaball
-  // blob from slide 03 fades in, so the end state matches slide 03 exactly.
+  // Final slide-04 beat: scaled blob overlay crossfades into the real metaball
+  // from slide 03, so the end state matches slide 03 exactly.
   playEllipseConvergeBeat(onComplete) {
     this.stopPlay();
     if (!this.host) {
@@ -1156,12 +1158,14 @@ export class ScanConsensusDemo {
     const start = performance.now();
     const tick = (now) => {
       const t = easeInOut(clamp((now - start) / duration, 0, 1));
+      const overlayOpacity = 1 - t;
       this.render({
         ...this.topologyHoldState(true),
         hideCage: true,
-        drawEllipses: true,
+        drawBlobApprox: overlayOpacity > 0.001,
+        drawBubbles: t > 0.02,
         ellipseTween: 1,
-        ellipseOpacity: 1 - t,
+        ellipseOpacity: overlayOpacity,
         singularScaffold: this.singularScaffold,
         solidGrayPartials: this.solidGrayPartials,
       });
