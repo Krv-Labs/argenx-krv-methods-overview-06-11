@@ -261,8 +261,8 @@ export class CubeThresholdDemo {
       const real_out = PARTIALS.filter(inside).length;
       const captured_out = Math.round(real_out * 1.8);
       metrics = [
-        ["IN Captured", String(captured_in)],
-        ["OUT Captured", String(captured_out)],
+        ["Target Captured", String(captured_in)],
+        ["Non-Target Captured", String(captured_out)],
         ["Targets Missed", String(TRUE_CELLS.length - captured_in)],
         ["Total Targets", String(TRUE_CELLS.length)],
       ];
@@ -473,8 +473,10 @@ export class ScanConsensusDemo {
   constructor(api) {
     this.api = api;
     this.stepIndex = 0;
-    this.h = new Heerich({ camera: { type: "isometric" }, gap: 0.07 });
+    this.h = new Heerich({ camera: { type: "orthographic", angle: 45, pitch: 35.264 }, gap: 0.07 });
     this.state = { plane: null, lit: 0, partialA: 0, redBox: false, lift: 0 };
+    this.singularScaffold = false;
+    this.solidGrayPartials = false;
   }
 
   mount(stageHost, controlsHost) {
@@ -518,7 +520,7 @@ export class ScanConsensusDemo {
     this.api.updateDetails({
       kicker: "Pulsar scan",
       title: [
-        "Scan planes read the whole block.",
+        "Thinking outside the box.",
         "Agreement becomes structure.",
         "The best threshold box still clips the shape.",
         "The cohort separates from the pool.",
@@ -542,10 +544,24 @@ export class ScanConsensusDemo {
   }
 
   render(overrides = {}) {
-    const st = { ...this.baseStateForStep(), ...overrides };
+    const st = {
+      singularScaffold: this.singularScaffold,
+      solidGrayPartials: this.solidGrayPartials,
+      ...this.baseStateForStep(),
+      ...overrides
+    };
+    if (st.singularScaffold) {
+      st.hideCage = true;
+    }
     this.state = st;
     const h = this.h;
     h.clear();
+
+    if (st.camera) {
+      h.setCamera({ type: "orthographic", ...st.camera });
+    } else {
+      h.setCamera({ type: "orthographic", angle: 45, pitch: 35.264 });
+    }
 
     // Anchor bounds with invisible boxes to lock camera view extents
     h.applyGeometry({
@@ -565,22 +581,37 @@ export class ScanConsensusDemo {
     const off = -Math.round(st.lift * 9);
     const liftSet = off > 0 ? new Set(TRUE_CELLS.map(([x, y, z]) => `${x},${y + off},${z}`)) : TRUE_SET;
 
-    h.applyGeometry({
-      type: "fill",
-      bounds: [[0, 0, 0], [W, H, D]],
-      test: (x, y, z) => CAGE_TEST(x, y, z) && !liftSet.has(`${x},${y},${z}`),
-      opaque: false,
-      meta: { id: "cage" },
-      style: {
-        default: st.hideCage
-          ? { fill: "none", stroke: "none" }
-          : { fill: "rgba(32,35,51,0.025)", stroke: "rgba(32,35,51,0.20)", strokeWidth: 0.5 }
-      },
-    });
+    if (st.singularScaffold) {
+      h.applyGeometry({
+        type: "box",
+        position: [0, 0, 0],
+        size: [W, H, D],
+        opaque: false,
+        meta: { id: "scaffold-outline" },
+        style: {
+          default: st.hideCage
+            ? { fill: "none", stroke: "none" }
+            : { fill: "none", stroke: "rgba(32,35,51,0.20)", strokeWidth: 0.5 }
+        }
+      });
+    } else {
+      h.applyGeometry({
+        type: "fill",
+        bounds: [[0, 0, 0], [W, H, D]],
+        test: (x, y, z) => CAGE_TEST(x, y, z) && !liftSet.has(`${x},${y},${z}`),
+        opaque: false,
+        meta: { id: "cage" },
+        style: {
+          default: st.hideCage
+            ? { fill: "none", stroke: "none" }
+            : { fill: "rgba(32,35,51,0.025)", stroke: "rgba(32,35,51,0.20)", strokeWidth: 0.5 }
+        },
+      });
+    }
 
     const n = Math.round(st.lit * TRUE_CELLS.length);
     for (let i = 0; i < n; i++) {
-      const [x, y, z] = TRUE_CELLS[i];
+      let [x, y, z] = TRUE_CELLS[i];
       const role = TRUE_ROLES[i];
       const strong = role === "core";
       
@@ -603,18 +634,54 @@ export class ScanConsensusDemo {
         stroke = "#0a5f6d";
       }
 
+      let scale = 1.0;
+      if (st.dismorphProgress !== undefined && st.dismorphProgress > 0) {
+        const p = st.dismorphProgress;
+        
+        // 1. Position offsets (drifting / splitting)
+        if (role === "flare") {
+          x += (x - 6) * 0.45 * p;
+          z += (z - 6) * 0.45 * p;
+        } else if (role === "satellite") {
+          x += (x - 2.5) * 0.3 * p;
+          z += (z - 3.2) * 0.3 * p;
+        }
+        
+        // 2. Scale adjustments (holes appearing & shrinking)
+        if (role === "core") {
+          const distToCenter = Math.sqrt((x - 6) ** 2 + (z - 6) ** 2);
+          if (distToCenter < 1.2) {
+            scale = Math.max(0, 1 - p * 2.2);
+          }
+        } else if (role === "satellite") {
+          scale = Math.max(0.1, 1 - p * 0.7);
+        } else if (role === "outlier") {
+          scale = Math.max(0, 1 - p);
+        }
+      }
+
+      if (scale <= 0.05) continue; // Skip rendering fully dissolved cells!
+
       const style = {
         default: { fill, stroke, strokeWidth: 0.8 },
         top: { fill, hatch: { angle: 45, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } },
       };
       if (strong) style.left = { fill, hatch: { angle: 135, period: 3.6, stroke: "#f4f1e9", strokeWidth: 0.5 } };
-      h.applyGeometry({ type: "box", position: [x, y + off, z], size: 1, meta: { id: ROLE_CARD[role] }, style });
+      
+      const geo = { type: "box", position: [x, y + off, z], size: 1, meta: { id: ROLE_CARD[role] }, style };
+      if (scale < 0.999) {
+        geo.scale = [scale, scale, scale];
+        geo.scaleOrigin = [0.5, 0.5, 0.5];
+      }
+      h.applyGeometry(geo);
     }
 
     if (st.partialA > 0.03) {
-      for (const q of PARTIALS) {
+      const pCount = st.partialCount !== undefined ? st.partialCount : PARTIALS.length;
+      for (let i = 0; i < pCount; i++) {
+        const q = PARTIALS[i];
         let fill, stroke, style;
-        if (st.slide1Revealed !== undefined) {
+        if (st.slide1Revealed !== undefined || st.solidGrayPartials) {
           fill = "rgba(215, 217, 218, 1.000)";
           stroke = "rgb(110, 114, 110)";
           style = {
@@ -698,14 +765,128 @@ export class ScanConsensusDemo {
     }
 
     this.host.innerHTML = h.toSVG({ padding: 46 });
+
+    if (st.drawBubbles) {
+      const svg = this.host.querySelector("svg");
+      if (svg) {
+        this.drawGroupOutlines(svg);
+      }
+    }
+
     this.updateCopy();
     return this.getSvg();
   }
 
+  drawGroupOutlines(svg) {
+    const isUnmelt = this.state && this.state.unmelt;
+    // 1. Add the gooey filter defs to the SVG
+    const defs = `
+      <defs>
+        <filter id="gooey-melt" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+          <!-- 1. Blur the source blocks slightly (to 4 or from 4 to 0 depending on unmelt) -->
+          <feGaussianBlur in="SourceGraphic" stdDeviation="${isUnmelt ? 4 : 0}" result="blur">
+            <animate attributeName="stdDeviation" 
+                     from="${isUnmelt ? 4 : 0}" 
+                     to="${isUnmelt ? 0 : 4}" 
+                     dur="1.2s" begin="0.2s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4, 0, 0.2, 1" />
+          </feGaussianBlur>
+          
+          <!-- 2. High-contrast threshold and smooth color transition to brand purple (#9c27b8) -->
+          <feColorMatrix in="blur" mode="matrix" 
+                         values="${isUnmelt ? "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10" : "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10"}" result="goo">
+            <animate attributeName="values"
+                     from="${isUnmelt ? "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10" : "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10"}"
+                     to="${isUnmelt ? "1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 50 -10" : "0 0 0 0 0.612  0 0 0 0 0.153  0 0 0 0 0.722  0 0 0 50 -10"}"
+                     dur="1.2s" begin="0.2s" fill="freeze" calcMode="spline" keyTimes="0;1" keySplines="0.4, 0, 0.2, 1" />
+          </feColorMatrix>
+          
+          <!-- 3. Dilate the sharp fills slightly outward by 1.0px to form the outline base -->
+          <feMorphology in="goo" operator="dilate" radius="1.0" result="dilated" />
+          
+          <!-- 4. Subtract the original goo from the dilated shape to leave ONLY a thin 1.0px outline ring -->
+          <feComposite in="dilated" in2="goo" operator="out" result="rawOutline" />
+          
+          <!-- 5. Recolor outline ring to #6e1b82 (dark purple) and animate its fade-in after melting is done -->
+          <feColorMatrix in="rawOutline" mode="matrix" result="coloredOutline"
+                         values="${isUnmelt ? "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0" : "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0"}">
+            <animate attributeName="values"
+                     from="${isUnmelt ? "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0" : "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0"}"
+                     to="${isUnmelt ? "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 0 0" : "0 0 0 0 0.431  0 0 0 0 0.106  0 0 0 0 0.510  0 0 0 1 0"}"
+                     dur="0.6s" begin="${isUnmelt ? "0.0s" : "1.4s"}" fill="freeze" />
+          </feColorMatrix>
+          
+          <!-- 6. Composite the 1px outline ring OVER the solid purple goo fill -->
+          <feComposite in="coloredOutline" in2="goo" operator="over" />
+        </filter>
+      </defs>
+    `;
+    svg.insertAdjacentHTML("afterbegin", defs);
+
+    // 2. Wrap all targets in a single group that has the gooey filter applied
+    const targets = svg.querySelectorAll('[data-id="core"], [data-id="flare"], [data-id="satellite"], [data-id="outlier"]');
+    if (targets.length > 0) {
+      const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
+      group.setAttribute("filter", "url(#gooey-melt)");
+      
+      const firstTarget = targets[0];
+      const parent = firstTarget.parentNode;
+      parent.insertBefore(group, firstTarget);
+      
+      for (const t of targets) {
+        group.appendChild(t);
+      }
+    }
+  }
+
+  toggle3D() {
+    if (!this.singularScaffold) return;
+    const is3D = this.state.camera && this.state.camera.pitch < 80;
+    const targetAngle = is3D ? 0 : 45;
+    const targetPitch = is3D ? 89.9 : 35.264;
+
+    const startAngle = this.state.camera ? this.state.camera.angle : 0;
+    const startPitch = this.state.camera ? this.state.camera.pitch : 89.9;
+
+    const start = performance.now();
+    const duration = 1200;
+    const tick = (now) => {
+      const t = easeInOut(clamp((now - start) / duration, 0, 1));
+      const angle = lerp(startAngle, targetAngle, t);
+      const pitch = lerp(startPitch, targetPitch, t);
+      this.render({ plane: null, lit: 1, partialA: 0, partialCount: 0, camera: { angle, pitch }, drawBubbles: true });
+      if (t < 1) {
+        requestAnimationFrame(tick);
+      } else {
+        const btn = document.querySelector("#btnToggle3D");
+        if (btn) {
+          btn.textContent = is3D ? "Rotate to 3D View" : "Rotate to 2D View";
+        }
+      }
+    };
+    requestAnimationFrame(tick);
+  }
+
   baseStateForStep() {
-    if (this.stepIndex === 0) return { plane: null, lit: 0, partialA: 0, redBox: false, lift: 0 };
+    if (this.stepIndex === 0) {
+      if (this.singularScaffold) {
+        return { plane: null, lit: 1, partialA: 1, redBox: false, lift: 0, hideCage: true };
+      }
+      return { plane: null, lit: 0, partialA: 0, redBox: false, lift: 0 };
+    }
     if (this.stepIndex === 1) return { plane: null, lit: 1, partialA: 1, redBox: false, lift: 0 };
-    if (this.stepIndex === 2) return { plane: null, lit: 1, partialA: 0, redBox: true, lift: 0 };
+    if (this.stepIndex === 2) {
+      if (this.singularScaffold) {
+        return {
+          plane: null,
+          lit: 1,
+          partialA: 0,
+          redBox: false,
+          camera: { angle: 0, pitch: 85 },
+          drawBubbles: true
+        };
+      }
+      return { plane: null, lit: 1, partialA: 0, redBox: true, lift: 0 };
+    }
     return { plane: null, lit: 1, partialA: 0, redBox: false, lift: 1 };
   }
 
@@ -722,12 +903,47 @@ export class ScanConsensusDemo {
 
   async renderFrame(t, duration) {
     const phase = t / duration;
+    if (this.singularScaffold) {
+      if (this.stepIndex === 0) {
+        // Slide 3 Animation: Sweep -> Disappear -> Rotate 2D & Melt
+        if (phase < 0.4) {
+          // Phase 1: Sweep (0.0 -> 0.4)
+          const u = phase / 0.4;
+          const axes = [
+            { ax: "x", n: W, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+            { ax: "y", n: H, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+            { ax: "z", n: D, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+          ];
+          const current = axes[Math.min(2, Math.floor(u * 3))];
+          const local = (u * 3) % 1;
+          const plane = { ...current, i: Math.min(current.n - 1, Math.floor(local * current.n)) };
+          return this.render({ plane, lit: 1, partialA: 1 });
+        } else if (phase < 0.7) {
+          // Phase 2: Non-targets disappear one by one (0.4 -> 0.7)
+          const u = (phase - 0.4) / 0.3;
+          const pCount = Math.round((1 - u) * PARTIALS.length);
+          return this.render({ plane: null, lit: 1, partialA: pCount > 0 ? 1 : 0, partialCount: pCount });
+        } else {
+          // Phase 3: Camera rotation to 2D flat view and gooey melt (0.7 -> 1.0)
+          const u = (phase - 0.7) / 0.3;
+          const t_rot = easeInOut(u);
+          const angle = lerp(45, 0, t_rot);
+          const pitch = lerp(35.264, 85, t_rot);
+          const drawBubbles = phase >= 0.99;
+          return this.render({ plane: null, lit: 1, partialA: 0, partialCount: 0, camera: { angle, pitch }, drawBubbles });
+        }
+      } else if (this.stepIndex === 2) {
+        // Slide 4 Animation: Stay in flat 2D view and smoothly dismorph the manifold
+        return this.render({ plane: null, lit: 1, partialA: 0, redBox: false, camera: { angle: 0, pitch: 85 }, drawBubbles: true, dismorphProgress: phase });
+      }
+    }
+
     if (phase < 0.3) {
       this.stepIndex = 0;
       const u = phase / 0.3;
       const axes = [
-        { ax: "x", n: W, fill: "rgba(13,126,143,0.38)", stroke: "#0a5f6d" },
-        { ax: "y", n: H, fill: "rgba(169,106,8,0.38)", stroke: "#7a4c06" },
+        { ax: "x", n: W, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
+        { ax: "y", n: H, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
         { ax: "z", n: D, fill: "rgba(156,39,184,0.34)", stroke: "#6e1b82" },
       ];
       const current = axes[Math.min(2, Math.floor(u * 3))];
@@ -736,6 +952,9 @@ export class ScanConsensusDemo {
     }
     if (phase < 0.62) {
       this.stepIndex = 1;
+      if (this.singularScaffold) {
+        return this.render({ lit: 1, partialA: 1 });
+      }
       const u = easeOut((phase - 0.3) / 0.32);
       return this.render({ lit: u, partialA: Math.min(1, u * 1.35) });
     }

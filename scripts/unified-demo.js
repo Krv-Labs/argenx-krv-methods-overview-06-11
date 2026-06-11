@@ -207,6 +207,8 @@ class UnifiedStoryDemo {
 
     this.cubeDemo = new CubeThresholdDemo(this.wrapperApi);
     this.scanDemo = new ScanConsensusDemo(this.wrapperApi);
+    this.scanDemo.singularScaffold = true;
+    this.scanDemo.solidGrayPartials = true;
     this.crescentDemo = new CrescentFilterDemo(this.wrapperApi);
     this.manifoldDemo = new ManifoldFeedbackDemo(this.wrapperApi);
     this.verdictDemo = new VerdictSubDemo(this.wrapperApi);
@@ -217,7 +219,7 @@ class UnifiedStoryDemo {
       {
         kicker: "",
         title: "Every cube represents a patient.",
-        body: this.slide1Revealed > 0 ? "Non-destructive sweeps light up the cohort inside the intact pool, separating targets from surrounding noise." : "Each cube should be thought of as a patient in the EHR. The task? Determine which patients are good candidates for a clinical trial.",
+        body: "Each cube should be thought of as a patient in the EHR. The task? Determine which patients are good candidates for a clinical trial.",
         stepLabel: "Space",
         demo: "scan",
         stepIndex: 1,
@@ -225,7 +227,7 @@ class UnifiedStoryDemo {
         hasAnimation: true
       },
       {
-        kicker: "02 / 09 · Threshold Problem",
+        kicker: "02 / 04 · Threshold Problem",
         title: "Why Filters Fail",
         body: "A tight filter misses valid candidates. A loose filter creates overwhelming review burden. Adjust the slider to choose which failure mode dominates.",
         stepLabel: "Thresholds",
@@ -234,21 +236,17 @@ class UnifiedStoryDemo {
         hasAnimation: false
       },
       {
-        kicker: "03 / 09 · Non-destructive Scan",
-        title: "Scan planes read the whole block.",
-        body: "Instead of removing records, Pulsar's scan planes read the entire pool and leave it intact. Press Next to run the sweep.",
+        kicker: "03 / 04 · Non-destructive Scan",
+        title: "Thinking outside of a box.",
+        body: "Instead of filtering records, Pulsar captures desired patient attributes in all of their complex glory.",
         stepLabel: "Scans",
         demo: "scan",
         stepIndex: 0,
-        metrics: [
-          ["Views", "3"],
-          ["Consensus cells", "33"],
-          ["Cells destroyed", "0"]
-        ],
+        metrics: [],
         hasAnimation: true
       },
       {
-        kicker: "04 / 09 · Compare",
+        kicker: "04 / 04 · Compare",
         title: "The best threshold box still clips the shape.",
         body: "The red frame is the optimal threshold block from prior steps. It still misses part of the discovered cohort.",
         stepLabel: "Compare",
@@ -259,61 +257,6 @@ class UnifiedStoryDemo {
           ["Missed by box", "42"],
           ["Cells destroyed", "0"]
         ],
-        hasAnimation: false
-      },
-      {
-        kicker: "05 / 09 · Lift Shape",
-        title: "The cohort separates from the pool.",
-        body: "The discovered shape lifts out as a traceable candidate set, while the original pool remains available downstream. Press Next to lift the shape.",
-        stepLabel: "Lift",
-        demo: "scan",
-        stepIndex: 3,
-        metrics: [
-          ["Consensus cells", "33"],
-          ["Patients surfaced", "229"],
-          ["Cells destroyed", "0"]
-        ],
-        hasAnimation: true
-      },
-      {
-        kicker: "06 / 09 · 2D Space",
-        title: "No box fits a crescent.",
-        body: "Reframing the problem in a 2D similarity plane: tighten the box and targets fall outside, loosen it and the look-alike cluster floods in. Slide to see the trade-off.",
-        stepLabel: "Crescent",
-        demo: "crescent",
-        stepIndex: 0,
-        hasAnimation: false
-      },
-      {
-        kicker: "07 / 09 · Manifolds",
-        title: "Boundaries with the shape of the evidence.",
-        body: "Pulsar wraps each cohort in a learned manifold. The target manifold follows the crescent shape, holds its satellites, and excludes look-alikes.",
-        stepLabel: "Manifold",
-        demo: "manifold",
-        stepIndex: 0,
-        metrics: [
-          ["Manifolds", "4"],
-          ["Targets captured", `${N_T} / ${N_T}`],
-          ["False positives", "0"]
-        ],
-        hasAnimation: false
-      },
-      {
-        kicker: "08 / 09 · Active Learning",
-        title: "Every decision re-draws the shape.",
-        body: "A clinician rejects borderline edges or accepts bridge cells. Each decision teaches the mold, and the boundary splits or fuses continuously. Press Next to see clinician decisions.",
-        stepLabel: "Feedback",
-        demo: "manifold",
-        stepIndex: 2,
-        hasAnimation: true
-      },
-      {
-        kicker: "09 / 09 · Final Verdict",
-        title: "Two languages. One verdict.",
-        body: "Flip between the learned manifold and a rectangular box on the same similarity plane. One wraps the cohort exactly; the other never stops paying in misses and false positives.",
-        stepLabel: "Verdict",
-        demo: "verdict",
-        stepIndex: 0,
         hasAnimation: false
       }
     ];
@@ -351,7 +294,7 @@ class UnifiedStoryDemo {
         this.animPlayed = true;
         this.play();
       } else {
-        if (this.stepIndex < 8) {
+        if (this.stepIndex < 3) {
           this.stepIndex++;
           this.animPlayed = false;
           this.slide1Revealed = 0;
@@ -381,7 +324,7 @@ class UnifiedStoryDemo {
     const config = this.getSlideConfig();
     const hasAnim = config.hasAnimation;
     if (delta > 0) {
-      return (hasAnim && !this.animPlayed) || this.stepIndex < 8;
+      return (hasAnim && !this.animPlayed) || this.stepIndex < 3;
     } else {
       return (hasAnim && this.animPlayed) || this.stepIndex > 0;
     }
@@ -417,30 +360,29 @@ class UnifiedStoryDemo {
           legend.style.cssText = "padding: 16px; display: flex; flex-direction: column; gap: 14px; background: var(--panel); box-shadow: var(--shadow-border);";
           legend.innerHTML = `
             <div class="control-label" style="font-size: 10px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--rule); padding-bottom: 8px;">
-              EHR Cohort Legend
+              Legend
             </div>
-            <p style="font-size: 11px; color: var(--muted); line-height: 1.6; margin: 0;">
-              Consensus sweeps light up target patients cleanly inside the intact pool, separating them from unstable signals.
-            </p>
             <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 4px;">
               <div style="display: flex; align-items: start; gap: 12px;">
                 <div style="width: 14px; height: 14px; background: rgba(13, 126, 143, 0.92); border: 1px solid #0a5f6d; flex-shrink: 0; border-radius: 2px;"></div>
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <strong style="font-size: 11px; color: var(--ink); font-weight: 600;">IN Patients (Core Targets)</strong>
-                  <span style="font-size: 10px; color: var(--muted); line-height: 1.4;">Patients who match multiple reconciled consensus views, representing the core targets we are looking for.</span>
+                  <strong style="font-size: 11px; color: var(--ink); font-weight: 600;">Target Patients</strong>
+                  <span style="font-size: 10px; color: var(--muted); line-height: 1.4;">Patients well fit for the clinical trial.</span>
                 </div>
               </div>
               <div style="display: flex; align-items: start; gap: 12px;">
                 <div style="width: 14px; height: 14px; background: rgb(215, 217, 218); border: 1px solid rgb(110, 114, 110); flex-shrink: 0; border-radius: 2px;"></div>
                 <div style="display: flex; flex-direction: column; gap: 2px;">
-                  <strong style="font-size: 11px; color: var(--ink); font-weight: 600;">OUT Patients (Borderline / Noise)</strong>
-                  <span style="font-size: 10px; color: var(--muted); line-height: 1.4;">Borderline candidates and single-view signals who fall outside the core trial criteria, remaining grey.</span>
+                  <strong style="font-size: 11px; color: var(--ink); font-weight: 600;">Non-Target Patients</strong>
+                  <span style="font-size: 10px; color: var(--muted); line-height: 1.4;">All other patients on record.</span>
                 </div>
               </div>
             </div>
           `;
           this.controlsHost.replaceChildren(legend);
         }
+      } else if (this.stepIndex === 2) {
+        this.controlsHost.replaceChildren(); // Completely empty left controls panel for Slide 3!
       } else {
         const emptyControls = document.createElement("div");
         emptyControls.className = "control-group";

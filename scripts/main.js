@@ -87,9 +87,9 @@ function updateNav() {
   refs.btnNext.disabled = !hasDemo || !cur.canStep(1);
 
   if (hasDemo && cur.stepIndex !== undefined) {
-    if (refs.dotContainer && refs.dotContainer.children.length !== 9) {
+    if (refs.dotContainer && refs.dotContainer.children.length !== 4) {
       refs.dotContainer.innerHTML = "";
-      for (let i = 0; i < 9; i++) {
+      for (let i = 0; i < 4; i++) {
         const dot = doc.createElement("button");
         dot.className = "progress-dot";
         dot.type = "button";
