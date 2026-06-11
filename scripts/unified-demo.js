@@ -280,9 +280,9 @@ class UnifiedStoryDemo {
   getSlide4PhaseConfig() {
     return {
       kicker: "04 / 04 · Continuous Improvement",
-      title: "Learning Shapes.",
+      title: "Shape is Intelligence.",
       body:
-        "Trial-wide intelligence tells us who we're looking for; site-specific tuning tells us where to find them—so doctors spend less time reviewing the wrong charts.",
+        "Pulsar learns who belongs in your trial. Clinicians review candidates; trial evidence and conversion performance tighten the shape with each round—fewer records off target, more patients who convert.",
       metrics: [],
     };
   }
